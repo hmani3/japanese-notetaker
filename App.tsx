@@ -10,6 +10,7 @@ import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-
 import { ScanTab } from './src/components/ScanTab';
 import { CatalogTab } from './src/components/CatalogTab';
 import { HistoryTab } from './src/components/HistoryTab';
+import { ApiKeyModal } from './src/components/ApiKeyModal';
 import {
   loadCatalog,
   loadCompoundsCatalog,
@@ -49,6 +50,7 @@ function MainApp() {
   const [isScanning, setIsScanning] = useState(false);
   const [scanData, setScanData] = useState<ExtractedScanData | null>(null);
   const [showSummary, setShowSummary] = useState(false);
+  const [showKeyModal, setShowKeyModal] = useState(false);
 
   const refreshData = async () => {
     const loadedCatalog = await loadCatalog();
@@ -113,9 +115,19 @@ function MainApp() {
           </View>
         </View>
 
-        <View style={styles.statsPill}>
-          <Text style={styles.statsPillNum}>{stats.uniqueKanjiCount}</Text>
-          <Text style={styles.statsPillLabel}>Kanji</Text>
+        <View style={styles.headerRight}>
+          <TouchableOpacity
+            style={styles.keyBtn}
+            onPress={() => setShowKeyModal(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.keyBtnText}>Key</Text>
+          </TouchableOpacity>
+
+          <View style={styles.statsPill}>
+            <Text style={styles.statsPillNum}>{stats.uniqueKanjiCount}</Text>
+            <Text style={styles.statsPillLabel}>Kanji</Text>
+          </View>
         </View>
       </View>
 
@@ -200,6 +212,11 @@ function MainApp() {
           </Text>
         </TouchableOpacity>
       </View>
+
+      <ApiKeyModal
+        visible={showKeyModal}
+        onClose={() => setShowKeyModal(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -218,6 +235,24 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#202026',
     backgroundColor: '#131317',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  keyBtn: {
+    backgroundColor: '#1E1E26',
+    borderWidth: 1,
+    borderColor: '#2E2E3C',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  keyBtnText: {
+    color: '#AAA',
+    fontSize: 11,
+    fontWeight: '600',
   },
   brandRow: {
     flexDirection: 'row',
