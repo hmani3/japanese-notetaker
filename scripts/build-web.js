@@ -24,22 +24,22 @@ if (fs.existsSync(indexPath)) {
   const darkStyle = `
     <style>
       html, body, #root {
-        background-color: #111113 !important;
+        background-color: #131317 !important;
         color-scheme: dark;
         margin: 0;
         padding: 0;
         width: 100%;
         height: 100%;
+        height: 100dvh;
+        min-height: 100dvh;
+        overflow: hidden;
+        overscroll-behavior: none;
         -webkit-user-select: none;
         user-select: none;
       }
-      body {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        overflow: hidden;
+      #root {
+        display: flex;
+        flex-direction: column;
       }
     </style>
   `;
