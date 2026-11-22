@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -99,12 +100,27 @@ function MainApp() {
     }
   };
 
+  const isWeb = Platform.OS === 'web';
+  const isStandalonePWA =
+    isWeb &&
+    typeof window !== 'undefined' &&
+    (Boolean((window.navigator as any)?.standalone) ||
+      Boolean(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches));
+
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    <SafeAreaView
+      style={styles.container}
+      edges={isWeb ? ['left', 'right'] : ['top', 'left', 'right']}
+    >
       <StatusBar style="light" />
 
       {/* Clean Brand Header with Kanji Logo */}
-      <View style={styles.header}>
+      <View
+        style={[
+          styles.header,
+          isStandalonePWA && { paddingTop: Math.max(insets.top, 24) },
+        ]}
+      >
         <View style={styles.brandRow}>
           <View style={styles.logoBadge}>
             <Text style={styles.logoBadgeText}>漫画漢字</Text>

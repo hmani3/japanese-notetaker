@@ -25,12 +25,16 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
 }) => {
   const [keyInput, setKeyInput] = useState('');
   const [currentKeyMasked, setCurrentKeyMasked] = useState('');
+  const [fullStoredKey, setFullStoredKey] = useState('');
+  const [showStoredKey, setShowStoredKey] = useState(false);
+  const [showInputKey, setShowInputKey] = useState(true); // Default to showing key while typing as requested
 
   useEffect(() => {
     if (visible) {
       (async () => {
         try {
           const key = await getApiKey();
+          setFullStoredKey(key || '');
           if (key && key.length > 8) {
             setCurrentKeyMasked(`${key.slice(0, 6)}...${key.slice(-4)}`);
           } else if (key) {
@@ -39,6 +43,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
             setCurrentKeyMasked('Not set');
           }
         } catch {
+          setFullStoredKey('');
           setCurrentKeyMasked('Not set');
         }
       })();
@@ -58,6 +63,13 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
       return;
     }
     await setApiKey(keyInput.trim());
+    const saved = keyInput.trim();
+    setFullStoredKey(saved);
+    if (saved.length > 8) {
+      setCurrentKeyMasked(`${saved.slice(0, 6)}...${saved.slice(-4)}`);
+    } else {
+      setCurrentKeyMasked('Configured');
+    }
     setKeyInput('');
     Alert.alert('Saved', 'Gemini API key saved to device storage.');
     if (onKeySaved) onKeySaved();
@@ -80,28 +92,55 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
           </View>
 
           <Text style={styles.description}>
-            Your key is stored securely in local device storage and is never uploaded to any server.
+            Your key is stored securely in your device storage and is never sent to any intermediary server.
           </Text>
 
           <View style={styles.statusRow}>
-            <Text style={styles.statusLabel}>Current Status:</Text>
-            <Text style={styles.statusValue}>{currentKeyMasked || 'Checking...'}</Text>
+            <View style={styles.statusLeft}>
+              <Text style={styles.statusLabel}>Saved Key:</Text>
+              <Text style={styles.statusValue} numberOfLines={showStoredKey ? undefined : 1}>
+                {showStoredKey ? fullStoredKey : currentKeyMasked || 'Checking...'}
+              </Text>
+            </View>
+            {fullStoredKey ? (
+              <TouchableOpacity
+                style={styles.statusToggleBtn}
+                onPress={() => setShowStoredKey((prev) => !prev)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.statusToggleBtnText}>
+                  {showStoredKey ? 'Mask' : 'Show'}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
 
-          <View style={styles.inputRow}>
-            <TextInput
-              style={styles.input}
-              placeholder="Paste Gemini API key..."
-              placeholderTextColor="#666"
-              value={keyInput}
-              onChangeText={setKeyInput}
-              autoCapitalize="none"
-              autoCorrect={false}
-              secureTextEntry
-            />
-            <TouchableOpacity style={styles.pasteBtn} onPress={handlePaste} activeOpacity={0.7}>
-              <Text style={styles.pasteBtnText}>Paste</Text>
-            </TouchableOpacity>
+          <View style={styles.inputContainer}>
+            <View style={styles.inputRow}>
+              <TextInput
+                style={styles.input}
+                placeholder="Paste Gemini API key..."
+                placeholderTextColor="#666"
+                value={keyInput}
+                onChangeText={setKeyInput}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry={!showInputKey}
+              />
+              <TouchableOpacity
+                style={styles.toggleBtn}
+                onPress={() => setShowInputKey((prev) => !prev)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.toggleBtnText}>{showInputKey ? 'Hide' : 'Show'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.pasteBtn} onPress={handlePaste} activeOpacity={0.7}>
+                <Text style={styles.pasteBtnText}>Paste</Text>
+              </TouchableOpacity>
+            </View>
+            {keyInput.length > 0 && (
+              <Text style={styles.charCountText}>{keyInput.length} characters</Text>
+            )}
           </View>
 
           <TouchableOpacity style={styles.saveBtn} onPress={handleSave} activeOpacity={0.8}>
@@ -167,7 +206,7 @@ const styles = StyleSheet.create({
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
     backgroundColor: '#1E1E24',
     paddingVertical: 8,
     paddingHorizontal: 10,
@@ -175,14 +214,33 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#282832',
   },
+  statusLeft: {
+    flex: 1,
+    marginRight: 8,
+  },
   statusLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#8A8A9A',
+    marginBottom: 2,
   },
   statusValue: {
     fontSize: 12,
     fontWeight: 'bold',
     color: '#2ED573',
+  },
+  statusToggleBtn: {
+    backgroundColor: '#282834',
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 5,
+  },
+  statusToggleBtnText: {
+    color: '#DDD',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  inputContainer: {
+    gap: 4,
   },
   inputRow: {
     flexDirection: 'row',
@@ -199,6 +257,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#282832',
   },
+  toggleBtn: {
+    backgroundColor: '#282834',
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  toggleBtnText: {
+    color: '#DDD',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   pasteBtn: {
     backgroundColor: '#282834',
     borderRadius: 6,
@@ -210,6 +280,11 @@ const styles = StyleSheet.create({
     color: '#DDD',
     fontSize: 12,
     fontWeight: '600',
+  },
+  charCountText: {
+    fontSize: 10,
+    color: '#666',
+    textAlign: 'right',
   },
   saveBtn: {
     backgroundColor: '#E05666',

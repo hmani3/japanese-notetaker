@@ -1,12 +1,11 @@
+/* global __dirname */
 const { execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
 const distDir = path.join(__dirname, '..', 'dist');
-if (!fs.existsSync(distDir) || !fs.existsSync(path.join(distDir, 'index.html'))) {
-  console.log('[deploy] dist directory missing. Running build-web first...');
-  require('./build-web.js');
-}
+console.log('[deploy] Building fresh web bundle with latest code...');
+require('./build-web.js');
 
 console.log('[deploy] Preparing to push dist/ to origin:gh-pages...');
 const gitDir = path.join(distDir, '.git');
