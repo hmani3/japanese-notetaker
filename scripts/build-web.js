@@ -43,17 +43,22 @@ if (fs.existsSync(indexPath)) {
       }
       @media (hover: none) and (pointer: coarse), (max-width: 768px) {
         #app-header {
-          padding-top: max(env(safe-area-inset-top, 0px), 54px) !important;
+          padding-top: max(calc(env(safe-area-inset-top, 0px) + 14px), 64px) !important;
         }
         #app-nav {
-          padding-bottom: max(env(safe-area-inset-bottom, 0px), 20px) !important;
+          padding-bottom: max(calc(env(safe-area-inset-bottom, 0px) + 12px), 24px) !important;
         }
       }
     </style>
   `;
 
-  // 3. Inject iOS standalone PWA meta tags
+  // 3. Inject iOS standalone PWA meta tags & no-cache directives
   const pwaMeta = `
+    <!-- Prevent caching so updates are loaded immediately upon reload -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+
     <!-- iOS Full-screen Standalone App Support -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -64,8 +69,13 @@ if (fs.existsSync(indexPath)) {
   `;
 
   html = html.replace('<head>', '<head>' + darkStyle + pwaMeta);
+
+  // 4. Cache-bust bundle script tags to force mobile browsers to fetch fresh code
+  const timestamp = Date.now();
+  html = html.replace(/\.js" defer>/g, `.js?v=${timestamp}" defer>`);
+
   fs.writeFileSync(indexPath, html, 'utf8');
-  console.log('[build-web] Injected viewport-fit=cover, dark background reset, and iOS PWA meta tags');
+  console.log('[build-web] Injected viewport-fit=cover, dark background reset, iOS PWA meta tags, and script cache-buster');
 }
 
 // Copy icon to apple-touch-icon.png for iOS Home Screen icon

@@ -119,7 +119,7 @@ function MainApp() {
         nativeID="app-header"
         style={[
           styles.header,
-          isMobile && { paddingTop: 54 },
+          isMobile && { paddingTop: 64 },
         ]}
       >
         <View style={styles.brandRow}>
@@ -185,7 +185,7 @@ function MainApp() {
       {/* Clean Minimal Bottom Nav with Safe Insets & Multi-line Status */}
       <View
         nativeID="app-nav"
-        style={[styles.nav, { paddingBottom: Math.max(insets.bottom, isMobile ? 20 : 10) }]}
+        style={[styles.nav, { paddingBottom: Math.max(insets.bottom, isMobile ? 24 : 10) }]}
       >
         <TouchableOpacity
           style={[styles.navItem, activeTab === 'scan' && styles.navItemActive]}
@@ -251,7 +251,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingTop: 12,
+    paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#202026',
     backgroundColor: '#131317',
