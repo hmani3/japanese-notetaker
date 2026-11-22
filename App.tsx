@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -99,12 +100,28 @@ function MainApp() {
     }
   };
 
+  const isWeb = Platform.OS === 'web';
+  const isMobile =
+    isWeb &&
+    typeof navigator !== 'undefined' &&
+    (/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    <SafeAreaView
+      style={styles.container}
+      edges={isWeb ? ['left', 'right'] : ['top', 'left', 'right']}
+    >
       <StatusBar style="light" />
 
       {/* Clean Brand Header with Kanji Logo */}
-      <View style={styles.header}>
+      <View
+        nativeID="app-header"
+        style={[
+          styles.header,
+          isMobile && { paddingTop: 54 },
+        ]}
+      >
         <View style={styles.brandRow}>
           <View style={styles.logoBadge}>
             <Text style={styles.logoBadgeText}>漫画漢字</Text>
@@ -166,7 +183,10 @@ function MainApp() {
       </View>
 
       {/* Clean Minimal Bottom Nav with Safe Insets & Multi-line Status */}
-      <View style={[styles.nav, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+      <View
+        nativeID="app-nav"
+        style={[styles.nav, { paddingBottom: Math.max(insets.bottom, isMobile ? 20 : 10) }]}
+      >
         <TouchableOpacity
           style={[styles.navItem, activeTab === 'scan' && styles.navItemActive]}
           onPress={() => handleTabPress('scan')}

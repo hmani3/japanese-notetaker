@@ -41,6 +41,14 @@ if (fs.existsSync(indexPath)) {
         display: flex;
         flex-direction: column;
       }
+      @media (hover: none) and (pointer: coarse), (max-width: 768px) {
+        #app-header {
+          padding-top: max(env(safe-area-inset-top, 0px), 54px) !important;
+        }
+        #app-nav {
+          padding-bottom: max(env(safe-area-inset-bottom, 0px), 20px) !important;
+        }
+      }
     </style>
   `;
 
