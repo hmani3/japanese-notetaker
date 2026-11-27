@@ -147,8 +147,8 @@ export const ScanSummaryModal: React.FC<ScanSummaryModalProps> = ({
       onRequestClose={onCancel}
     >
       <View style={styles.modalRoot}>
-        {/* Backdrop overlay that dismisses on tap */}
-        <TouchableWithoutFeedback onPress={onCancel}>
+        {/* Backdrop overlay: only dismisses on tap when viewing saved History */}
+        <TouchableWithoutFeedback onPress={isHistory ? onCancel : undefined}>
           <View style={styles.backdropOverlay} />
         </TouchableWithoutFeedback>
 
@@ -167,57 +167,79 @@ export const ScanSummaryModal: React.FC<ScanSummaryModalProps> = ({
             </Text>
           </View>
 
-          {/* Mode Toggle: Individual Kanji vs Compounds vs Translation & Notes */}
+          {/* Mode Toggle: Dynamically sized tabs that fit neatly without wrapping */}
           <View style={styles.viewModeToggle}>
-            <TouchableOpacity
-              style={[styles.modeBtn, viewMode === 'individual' && styles.modeBtnActive]}
-              onPress={() => setViewMode('individual')}
-              activeOpacity={0.7}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.viewModeToggleContent}
             >
-              <Text
-                style={[styles.modeBtnText, viewMode === 'individual' && styles.modeBtnTextActive]}
-              >
-                Kanji ({scanData.individual.unique.length})
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.modeBtn, viewMode === 'compounds' && styles.modeBtnActive]}
-              onPress={() => setViewMode('compounds')}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[styles.modeBtnText, viewMode === 'compounds' && styles.modeBtnTextActive]}
-              >
-                Compounds ({scanData.compounds.length})
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.modeBtn, viewMode === 'blurbs' && styles.modeBtnActive]}
-              onPress={() => setViewMode('blurbs')}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[styles.modeBtnText, viewMode === 'blurbs' && styles.modeBtnTextActive]}
-              >
-                Translation ({scanData.blurbs ? scanData.blurbs.length : 0})
-              </Text>
-            </TouchableOpacity>
-
-            {scanData.imageUri ? (
               <TouchableOpacity
-                style={[styles.modeBtn, viewMode === 'page' && styles.modeBtnActive]}
-                onPress={() => setViewMode('page')}
+                style={[styles.modeBtn, effectiveViewMode === 'individual' && styles.modeBtnActive]}
+                onPress={() => setViewMode('individual')}
                 activeOpacity={0.7}
               >
                 <Text
-                  style={[styles.modeBtnText, viewMode === 'page' && styles.modeBtnTextActive]}
+                  numberOfLines={1}
+                  style={[
+                    styles.modeBtnText,
+                    effectiveViewMode === 'individual' && styles.modeBtnTextActive,
+                  ]}
                 >
-                  Page
+                  Kanji ({scanData.individual.unique.length})
                 </Text>
               </TouchableOpacity>
-            ) : null}
+
+              <TouchableOpacity
+                style={[styles.modeBtn, effectiveViewMode === 'compounds' && styles.modeBtnActive]}
+                onPress={() => setViewMode('compounds')}
+                activeOpacity={0.7}
+              >
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    styles.modeBtnText,
+                    effectiveViewMode === 'compounds' && styles.modeBtnTextActive,
+                  ]}
+                >
+                  Compounds ({scanData.compounds.length})
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modeBtn, effectiveViewMode === 'blurbs' && styles.modeBtnActive]}
+                onPress={() => setViewMode('blurbs')}
+                activeOpacity={0.7}
+              >
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    styles.modeBtnText,
+                    effectiveViewMode === 'blurbs' && styles.modeBtnTextActive,
+                  ]}
+                >
+                  Translation ({scanData.blurbs ? scanData.blurbs.length : 0})
+                </Text>
+              </TouchableOpacity>
+
+              {scanData.imageUri ? (
+                <TouchableOpacity
+                  style={[styles.modeBtn, effectiveViewMode === 'page' && styles.modeBtnActive]}
+                  onPress={() => setViewMode('page')}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.modeBtnText,
+                      effectiveViewMode === 'page' && styles.modeBtnTextActive,
+                    ]}
+                  >
+                    Page
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+            </ScrollView>
           </View>
 
           {/* Sort & Order Controls */}
@@ -582,25 +604,34 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   viewModeToggle: {
-    flexDirection: 'row',
     backgroundColor: '#1E1E24',
     borderRadius: 8,
     padding: 3,
     marginBottom: 10,
     borderWidth: 1,
     borderColor: '#2A2A34',
+    flexGrow: 0,
+    flexShrink: 0,
+  },
+  viewModeToggleContent: {
+    flexDirection: 'row',
+    flexGrow: 1,
+    gap: 3,
   },
   modeBtn: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 0,
     paddingVertical: 7,
+    paddingHorizontal: 10,
     alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: 6,
   },
   modeBtnActive: {
     backgroundColor: '#2A2A36',
   },
   modeBtnText: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '600',
     color: '#8A8A9A',
   },

@@ -39,7 +39,8 @@ const SCAN_RESPONSE_SCHEMA = {
           },
           notes: {
             type: 'STRING',
-            description: '1 concise sentence on nuances, pronouns, grammar, or context.',
+            description:
+              'Optional 1 concise sentence ONLY if there is notable Japanese linguistic, literary, or cultural nuance (keigo/register, archaic kanji, idioms, dialects, wordplay, speech style). Return "" if none.',
           },
           box: {
             type: 'ARRAY',
@@ -68,10 +69,10 @@ const SCAN_RESPONSE_SCHEMA = {
 };
 
 const SYSTEM_INSTRUCTION =
-  'You are a fast, exact Japanese manga OCR and translation engine. Follow traditional manga reading order strictly: panels top-right to bottom-left; bubbles rightmost to leftmost; vertical columns rightmost to leftmost, top to bottom. Omit tiny furigana and pure kana SFX. Never invent unseen text. Keep notes to 1 concise sentence.';
+  'You are a fast, exact Japanese manga OCR and translation engine. Follow traditional manga reading order strictly: panels top-right to bottom-left; bubbles rightmost to leftmost; vertical columns rightmost to leftmost, top to bottom. Omit tiny furigana and pure kana SFX. Never invent unseen text. For "notes", focus ONLY on Japanese linguistic, literary, or cultural context (register/keigo, archaic kanji/kana, idioms, dialects, allusions, wordplay, pronoun/speech style)—never plot recap or general framing. If there is no specific nuance, return "" for "notes".';
 
 const IMAGE_PROMPT =
-  'Extract all dialogue/narration bubbles in exact R->L, top->bottom order into "blurbs" (japanese, translation, 1-sentence notes, and [ymin, xmin, ymax, xmax] 0-1000 box), and all Kanji words/compounds into "compounds" (compound, hiragana reading, short meaning).';
+  'Extract all dialogue/narration bubbles in exact R->L, top->bottom order into "blurbs" (japanese, translation, optional 1-sentence Japanese linguistic/literary/cultural notes or "", and [ymin, xmin, ymax, xmax] 0-1000 box), and all Kanji words/compounds into "compounds" (compound, hiragana reading, short meaning).';
 
 async function fetchWithTimeout(
   url: string,
@@ -124,7 +125,9 @@ function parseGeminiScanResponse(jsonText: string): ExtractedScanData {
     if (!item) continue;
     const japanese = String(item.japanese || item.text || item.original || '').trim();
     const translation = String(item.translation || item.english || '').trim();
-    const notes = String(item.notes || item.explanation || item.subtleties || '').trim();
+    const rawNotes = String(item.notes || item.explanation || item.subtleties || '').trim();
+    const isFillerNote = /^(none|n\/a|no special nuance.*|no notable nuance.*|-|—)$/i.test(rawNotes);
+    const notes = isFillerNote ? '' : rawNotes;
 
     let box: [number, number, number, number] | undefined;
     if (Array.isArray(item.box) && item.box.length === 4) {
@@ -139,7 +142,7 @@ function parseGeminiScanResponse(jsonText: string): ExtractedScanData {
         orderIndex: blurbIndex++,
         japanese,
         translation,
-        notes: notes || 'No special nuance notes provided.',
+        notes,
         ...(box ? { box } : {}),
       });
     }

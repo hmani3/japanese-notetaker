@@ -15,7 +15,7 @@ import { ScanSummaryModal } from './ScanSummaryModal';
 import { recordScanData } from '../services/storage';
 import { scanMangaImage, scanMangaText } from '../services/visionScanner';
 import { ExtractedScanData } from '../types';
-import { showAlert } from '../utils/alerts';
+import { showAlert, confirmAction } from '../utils/alerts';
 
 const MAX_WEB_IMAGE_DIM = 1280;
 
@@ -97,10 +97,8 @@ export const ScanTab: React.FC<ScanTabProps> = ({
       return;
     }
     setScanData(data);
-    // If user is currently on the scan tab, show summary immediately; otherwise keep held
-    if (isCurrentTab) {
-      setShowSummary(true);
-    }
+    // Always open summary immediately when scan finishes so it stays open
+    setShowSummary(true);
   };
 
   const handleImageScan = async (
@@ -217,8 +215,15 @@ export const ScanTab: React.FC<ScanTabProps> = ({
   };
 
   const handleDiscardSummary = () => {
-    setShowSummary(false);
-    setScanData(null);
+    confirmAction(
+      'Discard Scan',
+      'Discard this unsaved scan? It has not been saved to your Catalog or History yet.',
+      'Discard',
+      () => {
+        setShowSummary(false);
+        setScanData(null);
+      }
+    );
   };
 
   return (

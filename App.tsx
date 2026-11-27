@@ -16,7 +16,9 @@ import {
   loadCatalog,
   loadCompoundsCatalog,
   loadHistory,
+  loadPendingScan,
   loadStats,
+  savePendingScan,
 } from './src/services/storage';
 import {
   Catalog,
@@ -49,9 +51,14 @@ function MainApp() {
 
   // Background scanning & persistent summary state
   const [isScanning, setIsScanning] = useState(false);
-  const [scanData, setScanData] = useState<ExtractedScanData | null>(null);
+  const [scanData, setScanDataState] = useState<ExtractedScanData | null>(null);
   const [showSummary, setShowSummary] = useState(false);
   const [showKeyModal, setShowKeyModal] = useState(false);
+
+  const setScanData = (data: ExtractedScanData | null) => {
+    setScanDataState(data);
+    void savePendingScan(data);
+  };
 
   const refreshData = async () => {
     const [loadedCatalog, loadedCompounds, loadedHistory, loadedStats] = await Promise.all([
@@ -69,17 +76,23 @@ function MainApp() {
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const [loadedCatalog, loadedCompounds, loadedHistory, loadedStats] = await Promise.all([
-        loadCatalog(),
-        loadCompoundsCatalog(),
-        loadHistory(),
-        loadStats(),
-      ]);
+      const [loadedCatalog, loadedCompounds, loadedHistory, loadedStats, pendingScan] =
+        await Promise.all([
+          loadCatalog(),
+          loadCompoundsCatalog(),
+          loadHistory(),
+          loadStats(),
+          loadPendingScan(),
+        ]);
       if (mounted) {
         setCatalog(loadedCatalog);
         setCompoundsCatalog(loadedCompounds);
         setHistory(loadedHistory);
         setStats(loadedStats);
+        if (pendingScan) {
+          setScanDataState(pendingScan);
+          setShowSummary(true);
+        }
       }
     })();
 

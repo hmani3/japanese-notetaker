@@ -13,6 +13,34 @@ const CATALOG_STORAGE_KEY = '@manga_kanji_catalog_v1';
 const COMPOUNDS_STORAGE_KEY = '@manga_kanji_compounds_v1';
 const HISTORY_STORAGE_KEY = '@manga_kanji_history_v1';
 const STATS_STORAGE_KEY = '@manga_kanji_stats_v1';
+const PENDING_SCAN_STORAGE_KEY = '@manga_kanji_pending_scan_v1';
+
+export async function loadPendingScan(): Promise<ExtractedScanData | null> {
+  try {
+    const raw = await AsyncStorage.getItem(PENDING_SCAN_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as ExtractedScanData) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function savePendingScan(scan: ExtractedScanData | null): Promise<void> {
+  try {
+    if (!scan) {
+      await AsyncStorage.removeItem(PENDING_SCAN_STORAGE_KEY);
+      return;
+    }
+    try {
+      await AsyncStorage.setItem(PENDING_SCAN_STORAGE_KEY, JSON.stringify(scan));
+    } catch {
+      // Fallback without image if web localStorage is near quota
+      const slim = { ...scan, imageUri: undefined };
+      await AsyncStorage.setItem(PENDING_SCAN_STORAGE_KEY, JSON.stringify(slim));
+    }
+  } catch {
+    // Ignore storage write errors for pending cache
+  }
+}
 
 export async function loadCatalog(): Promise<Catalog> {
   try {
