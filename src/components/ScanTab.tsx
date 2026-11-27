@@ -23,17 +23,21 @@ const MAX_WEB_IMAGE_DIM = 1600;
  * Downscales large mobile camera photos on web via HTML5 canvas
  * so uploads are ~200KB instead of 5-15MB while keeping manga Kanji sharp.
  */
-async function compressBase64OnWeb(base64: string, mimeType: string = 'image/jpeg'): Promise<string> {
+async function compressBase64OnWeb(
+  base64: string,
+  mimeType: string = 'image/jpeg'
+): Promise<{ base64: string; aspectRatio?: number }> {
   if (Platform.OS !== 'web' || typeof document === 'undefined' || typeof Image === 'undefined') {
-    return base64;
+    return { base64 };
   }
 
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
       const { width, height } = img;
+      const aspectRatio = width > 0 && height > 0 ? width / height : undefined;
       if (width <= MAX_WEB_IMAGE_DIM && height <= MAX_WEB_IMAGE_DIM) {
-        resolve(base64);
+        resolve({ base64, aspectRatio });
         return;
       }
 
@@ -46,16 +50,16 @@ async function compressBase64OnWeb(base64: string, mimeType: string = 'image/jpe
       canvas.height = targetH;
       const ctx = canvas.getContext('2d');
       if (!ctx) {
-        resolve(base64);
+        resolve({ base64, aspectRatio });
         return;
       }
 
       ctx.drawImage(img, 0, 0, targetW, targetH);
       const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
       const stripped = dataUrl.split(',')[1];
-      resolve(stripped || base64);
+      resolve({ base64: stripped || base64, aspectRatio });
     };
-    img.onerror = () => resolve(base64);
+    img.onerror = () => resolve({ base64 });
     img.src = `data:${mimeType};base64,${base64}`;
   });
 }
@@ -99,11 +103,19 @@ export const ScanTab: React.FC<ScanTabProps> = ({
     }
   };
 
-  const handleImageScan = async (base64: string, mimeType?: string) => {
+  const handleImageScan = async (
+    base64: string,
+    mimeType?: string,
+    width?: number,
+    height?: number
+  ) => {
     setIsScanning(true);
     try {
-      const optimizedBase64 = await compressBase64OnWeb(base64, mimeType || 'image/jpeg');
-      const data = await scanMangaImage(optimizedBase64, 'image/jpeg');
+      const compressed = await compressBase64OnWeb(base64, mimeType || 'image/jpeg');
+      const data = await scanMangaImage(compressed.base64, 'image/jpeg');
+      const fallbackRatio = width && height && height > 0 ? width / height : undefined;
+      data.imageUri = `data:image/jpeg;base64,${compressed.base64}`;
+      data.imageAspectRatio = compressed.aspectRatio ?? fallbackRatio;
       setIsScanning(false);
       handleExtracted(data);
     } catch (err: any) {
@@ -127,7 +139,8 @@ export const ScanTab: React.FC<ScanTabProps> = ({
     });
 
     if (!result.canceled && result.assets[0]?.base64) {
-      await handleImageScan(result.assets[0].base64, result.assets[0].mimeType);
+      const asset = result.assets[0];
+      await handleImageScan(asset.base64!, asset.mimeType, asset.width, asset.height);
     }
   };
 
@@ -146,7 +159,8 @@ export const ScanTab: React.FC<ScanTabProps> = ({
     });
 
     if (!result.canceled && result.assets[0]?.base64) {
-      await handleImageScan(result.assets[0].base64, result.assets[0].mimeType);
+      const asset = result.assets[0];
+      await handleImageScan(asset.base64!, asset.mimeType, asset.width, asset.height);
     }
   };
 

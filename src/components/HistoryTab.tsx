@@ -51,6 +51,8 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
       },
       compounds: selectedScan.compounds || [],
       blurbs: selectedScan.blurbs || [],
+      imageUri: selectedScan.imageUri,
+      imageAspectRatio: selectedScan.imageAspectRatio,
     };
   }, [selectedScan]);
 

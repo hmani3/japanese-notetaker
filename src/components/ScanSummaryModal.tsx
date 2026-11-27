@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import {
   FlatList,
+  Image,
   Modal,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -24,7 +26,7 @@ interface ScanSummaryModalProps {
   kanjiDetailsMap?: Record<string, KanjiEntry>;
 }
 
-type ViewMode = 'individual' | 'compounds' | 'blurbs';
+type ViewMode = 'individual' | 'compounds' | 'blurbs' | 'page';
 type KanjiSortMode = 'order' | 'frequency' | 'difficulty';
 type CompoundSortMode = 'order' | 'frequency' | 'length';
 
@@ -56,6 +58,8 @@ export const ScanSummaryModal: React.FC<ScanSummaryModalProps> = ({
   const [kanjiSort, setKanjiSort] = useState<KanjiSortMode>('order');
   const [compoundSort, setCompoundSort] = useState<CompoundSortMode>('order');
   const [detailEntry, setDetailEntry] = useState<KanjiEntry | null>(null);
+  const [showOverlay, setShowOverlay] = useState(true);
+  const [selectedBlurbIdx, setSelectedBlurbIdx] = useState<number | null>(null);
 
   // 1. Processed Individual Kanji List
   const kanjiItems = useMemo(() => {
@@ -197,6 +201,20 @@ export const ScanSummaryModal: React.FC<ScanSummaryModalProps> = ({
                 Translation ({scanData.blurbs ? scanData.blurbs.length : 0})
               </Text>
             </TouchableOpacity>
+
+            {scanData.imageUri ? (
+              <TouchableOpacity
+                style={[styles.modeBtn, viewMode === 'page' && styles.modeBtnActive]}
+                onPress={() => setViewMode('page')}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[styles.modeBtnText, viewMode === 'page' && styles.modeBtnTextActive]}
+                >
+                  Page
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
 
           {/* Sort & Order Controls */}
@@ -267,9 +285,27 @@ export const ScanSummaryModal: React.FC<ScanSummaryModalProps> = ({
                 </Text>
               </TouchableOpacity>
             </View>
-          ) : (
+          ) : viewMode === 'blurbs' ? (
             <View style={styles.blurbHintBar}>
               <Text style={styles.blurbHintText}>Reading Order: Right → Left, Top → Bottom</Text>
+            </View>
+          ) : (
+            <View style={styles.overlayControlRow}>
+              <Text style={styles.blurbHintText}>Tap any bubble to inspect full notes</Text>
+              <TouchableOpacity
+                style={[styles.overlayToggleBtn, showOverlay && styles.overlayToggleBtnActive]}
+                onPress={() => setShowOverlay((prev) => !prev)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.overlayToggleText,
+                    showOverlay && styles.overlayToggleTextActive,
+                  ]}
+                >
+                  {showOverlay ? 'Overlay: ON' : 'Original'}
+                </Text>
+              </TouchableOpacity>
             </View>
           )}
 
@@ -339,7 +375,7 @@ export const ScanSummaryModal: React.FC<ScanSummaryModalProps> = ({
                 </View>
               )}
             />
-          ) : (
+          ) : viewMode === 'blurbs' ? (
             <FlatList
               style={styles.scrollList}
               data={scanData.blurbs || []}
@@ -369,6 +405,95 @@ export const ScanSummaryModal: React.FC<ScanSummaryModalProps> = ({
                 </View>
               )}
             />
+          ) : (
+            <ScrollView
+              style={styles.scrollList}
+              contentContainerStyle={styles.listContent}
+              showsVerticalScrollIndicator={true}
+            >
+              {scanData.imageUri ? (
+                <View
+                  style={[
+                    styles.pageCanvas,
+                    { aspectRatio: scanData.imageAspectRatio || 0.7 },
+                  ]}
+                >
+                  <Image
+                    source={{ uri: scanData.imageUri }}
+                    style={styles.pageImage}
+                    resizeMode="contain"
+                  />
+
+                  {showOverlay ? <View style={styles.pageDimScrim} pointerEvents="none" /> : null}
+
+                  {showOverlay &&
+                    (scanData.blurbs || []).map((blurb, idx) => {
+                      if (!blurb.box) return null;
+                      const [ymin, xmin, ymax, xmax] = blurb.box;
+                      const topPct = Math.max(0, Math.min(90, ymin / 10));
+                      const leftPct = Math.max(0, Math.min(82, xmin / 10));
+                      const widthPct = Math.max(16, Math.min(98 - leftPct, (xmax - xmin) / 10));
+                      const minHeightPct = Math.max(7, Math.min(98 - topPct, (ymax - ymin) / 10));
+                      const isSelected = selectedBlurbIdx === idx;
+
+                      return (
+                        <TouchableOpacity
+                          key={`overlay-${blurb.orderIndex ?? idx}`}
+                          style={[
+                            styles.overlayBubble,
+                            {
+                              top: `${topPct}%`,
+                              left: `${leftPct}%`,
+                              width: `${widthPct}%`,
+                              minHeight: `${minHeightPct}%`,
+                            },
+                            isSelected && styles.overlayBubbleSelected,
+                          ]}
+                          onPress={() =>
+                            setSelectedBlurbIdx((prev) => (prev === idx ? null : idx))
+                          }
+                          activeOpacity={0.85}
+                        >
+                          <Text style={styles.overlayBubbleNum}>#{idx + 1}</Text>
+                          <Text style={styles.overlayBubbleText} numberOfLines={4}>
+                            {blurb.translation}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                </View>
+              ) : (
+                <View style={styles.emptyBlurbs}>
+                  <Text style={styles.emptyBlurbsText}>
+                    Original image not available for this scan.
+                  </Text>
+                </View>
+              )}
+
+              {selectedBlurbIdx !== null && scanData.blurbs?.[selectedBlurbIdx] ? (
+                <View style={[styles.blurbCard, { marginTop: 10 }]}>
+                  <View style={styles.blurbHeader}>
+                    <Text style={styles.blurbIndexBadge}>
+                      Selected Bubble #{selectedBlurbIdx + 1}
+                    </Text>
+                  </View>
+                  <Text style={styles.blurbJapanese}>
+                    {scanData.blurbs[selectedBlurbIdx].japanese}
+                  </Text>
+                  <Text style={styles.blurbTranslation}>
+                    {scanData.blurbs[selectedBlurbIdx].translation}
+                  </Text>
+                  {scanData.blurbs[selectedBlurbIdx].notes ? (
+                    <View style={styles.blurbNotesBox}>
+                      <Text style={styles.blurbNotesLabel}>NUANCES & CONTEXT</Text>
+                      <Text style={styles.blurbNotesText}>
+                        {scanData.blurbs[selectedBlurbIdx].notes}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+            </ScrollView>
           )}
 
           {/* Action Footer */}
@@ -683,5 +808,78 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 13,
     fontWeight: 'bold',
+  },
+  overlayControlRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  overlayToggleBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    backgroundColor: '#1E1E24',
+    borderWidth: 1,
+    borderColor: '#2A2A34',
+  },
+  overlayToggleBtnActive: {
+    backgroundColor: '#28171C',
+    borderColor: '#E05666',
+  },
+  overlayToggleText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#8A8A9A',
+  },
+  overlayToggleTextActive: {
+    color: '#E05666',
+  },
+  pageCanvas: {
+    width: '100%',
+    position: 'relative',
+    backgroundColor: '#0E0E12',
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#26262E',
+  },
+  pageImage: {
+    width: '100%',
+    height: '100%',
+  },
+  pageDimScrim: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(10, 10, 14, 0.48)',
+  },
+  overlayBubble: {
+    position: 'absolute',
+    backgroundColor: 'rgba(18, 18, 24, 0.9)',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#3A3A4A',
+    padding: 4,
+    justifyContent: 'center',
+  },
+  overlayBubbleSelected: {
+    borderColor: '#E05666',
+    borderWidth: 1.5,
+    backgroundColor: 'rgba(30, 18, 24, 0.96)',
+  },
+  overlayBubbleNum: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#E05666',
+    marginBottom: 1,
+  },
+  overlayBubbleText: {
+    fontSize: 10,
+    lineHeight: 13,
+    color: '#FFF',
+    fontWeight: '500',
   },
 });

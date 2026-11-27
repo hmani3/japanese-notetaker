@@ -44,6 +44,8 @@ export interface DialogueBlurb {
   japanese: string;
   translation: string;
   notes: string;
+  /** Normalized bounding box [ymin, xmin, ymax, xmax] on a 0-1000 scale */
+  box?: [number, number, number, number];
 }
 
 export interface ExtractedKanjiResult {
@@ -56,6 +58,8 @@ export interface ExtractedScanData {
   individual: ExtractedKanjiResult;
   compounds: ScannedCompoundItem[];
   blurbs: DialogueBlurb[];
+  imageUri?: string;
+  imageAspectRatio?: number;
 }
 
 export interface ScanHistoryRecord {
@@ -68,6 +72,8 @@ export interface ScanHistoryRecord {
   kanjiDetails?: Record<string, KanjiEntry>; // Full dictionary snapshot for every kanji in the scan
   compounds: ScannedCompoundItem[];
   blurbs?: DialogueBlurb[];
+  imageUri?: string;
+  imageAspectRatio?: number;
   totalKanjiCount: number;
   uniqueKanjiCount: number;
 }

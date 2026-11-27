@@ -167,6 +167,8 @@ export async function recordScanData(
     kanjiDetails,
     compounds: scanData.compounds,
     blurbs: scanData.blurbs || [],
+    imageUri: scanData.imageUri,
+    imageAspectRatio: scanData.imageAspectRatio,
     totalKanjiCount: scanData.individual.all.length,
     uniqueKanjiCount: scanData.individual.unique.length,
   };
@@ -183,7 +185,20 @@ export async function recordScanData(
 
   await saveCatalog(currentCatalog);
   await saveCompoundsCatalog(currentCompounds);
-  await saveHistory(updatedHistory);
+  try {
+    await saveHistory(updatedHistory);
+  } catch {
+    // Web localStorage has ~5MB limit; strip older images first, then current image if needed
+    const trimmed = updatedHistory.map((rec, idx) =>
+      idx === 0 ? rec : { ...rec, imageUri: undefined }
+    );
+    try {
+      await saveHistory(trimmed);
+    } catch {
+      const noImages = updatedHistory.map((rec) => ({ ...rec, imageUri: undefined }));
+      await saveHistory(noImages);
+    }
+  }
   await saveStats(updatedStats);
 
   return {

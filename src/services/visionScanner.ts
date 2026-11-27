@@ -42,8 +42,14 @@ const SCAN_RESPONSE_SCHEMA = {
             description:
               'Concise notes on subtleties, pronouns, grammar, idioms, archaic kanji, or context.',
           },
+          box: {
+            type: 'ARRAY',
+            description:
+              'Normalized bounding box [ymin, xmin, ymax, xmax] on a 0 to 1000 scale enclosing this speech bubble or text block.',
+            items: { type: 'INTEGER' },
+          },
         },
-        required: ['japanese', 'translation', 'notes'],
+        required: ['japanese', 'translation', 'notes', 'box'],
       },
     },
     compounds: {
@@ -67,7 +73,7 @@ const SCAN_RESPONSE_SCHEMA = {
 const PROMPT_INSTRUCTIONS =
   'You are an expert Japanese manga OCR and translation engine.\n' +
   'Step 1 — Reading Order: Identify the manga panels in traditional Japanese reading order: top-right panel first, moving right-to-left across each row of panels, then top-to-bottom. Within each panel, read speech bubbles and narration boxes from rightmost to leftmost, top to bottom. Within each vertical bubble, read columns from rightmost column to leftmost column, top to bottom.\n' +
-  'Step 2 — Transcribe & Translate ("blurbs"): For each bubble/box in that exact reading order, transcribe the exact Japanese text ("japanese"), provide a natural English translation ("translation"), and explain subtleties/pronouns/grammar/nuances ("notes"). Omit tiny furigana ruby readings and pure kana sound effects (SFX).\n' +
+  'Step 2 — Transcribe & Translate ("blurbs"): For each bubble/box in that exact reading order, transcribe the exact Japanese text ("japanese"), provide a natural English translation ("translation"), explain subtleties/pronouns/grammar/nuances ("notes"), and output its normalized bounding box "box": [ymin, xmin, ymax, xmax] (0 to 1000 scale). Omit tiny furigana ruby readings and pure kana sound effects (SFX).\n' +
   'Step 3 — Extract Compounds ("compounds"): List every Kanji word/compound (jukugo, kanji names, or standalone kanji words) appearing in the transcribed dialogue in the same order of appearance, with its contextual hiragana "reading" and concise English "meaning". Do NOT include pure kana words.\n' +
   'Be 100% faithful to the actual text on the page—never invent or guess unseen dialogue.';
 
@@ -124,12 +130,21 @@ function parseGeminiScanResponse(jsonText: string): ExtractedScanData {
     const translation = String(item.translation || item.english || '').trim();
     const notes = String(item.notes || item.explanation || item.subtleties || '').trim();
 
+    let box: [number, number, number, number] | undefined;
+    if (Array.isArray(item.box) && item.box.length === 4) {
+      const nums = item.box.map((n: any) => Math.max(0, Math.min(1000, Number(n))));
+      if (nums.every((n: number) => Number.isFinite(n)) && nums[2] > nums[0] && nums[3] > nums[1]) {
+        box = [nums[0], nums[1], nums[2], nums[3]];
+      }
+    }
+
     if (japanese || translation) {
       blurbs.push({
         orderIndex: blurbIndex++,
         japanese,
         translation,
         notes: notes || 'No special nuance notes provided.',
+        ...(box ? { box } : {}),
       });
     }
   }
