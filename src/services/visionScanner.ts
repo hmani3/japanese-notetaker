@@ -4,7 +4,7 @@ import { extractKanji } from './kanjiExtractor';
 
 const API_KEY_STORAGE = '@manga_kanji_gemini_key';
 const DEFAULT_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
-const REQUEST_TIMEOUT_MS = 28000;
+const REQUEST_TIMEOUT_MS = 14000;
 
 export async function getApiKey(): Promise<string> {
   const custom = await AsyncStorage.getItem(API_KEY_STORAGE);
@@ -25,27 +25,25 @@ const SCAN_RESPONSE_SCHEMA = {
     blurbs: {
       type: 'ARRAY',
       description:
-        'All speech bubbles, thought bubbles, and narration boxes in exact manga reading order (right-to-left, top-to-bottom).',
+        'All speech bubbles, thought bubbles, and narration boxes in manga reading order (right-to-left, top-to-bottom).',
       items: {
         type: 'OBJECT',
         properties: {
           japanese: {
             type: 'STRING',
-            description: 'Exact Japanese text transcribed from the bubble (excluding furigana).',
+            description: 'Exact Japanese text transcribed from the bubble (omit tiny furigana).',
           },
           translation: {
             type: 'STRING',
-            description: 'Natural, faithful English translation capturing tone and character voice.',
+            description: 'Natural English translation capturing tone.',
           },
           notes: {
             type: 'STRING',
-            description:
-              'Concise notes on subtleties, pronouns, grammar, idioms, archaic kanji, or context.',
+            description: '1 concise sentence on nuances, pronouns, grammar, or context.',
           },
           box: {
             type: 'ARRAY',
-            description:
-              'Normalized bounding box [ymin, xmin, ymax, xmax] on a 0 to 1000 scale enclosing this speech bubble or text block.',
+            description: 'Bounding box [ymin, xmin, ymax, xmax] on 0-1000 scale.',
             items: { type: 'INTEGER' },
           },
         },
@@ -54,14 +52,13 @@ const SCAN_RESPONSE_SCHEMA = {
     },
     compounds: {
       type: 'ARRAY',
-      description:
-        'All Kanji words/compounds (jukugo, multi-kanji names, and standalone kanji words) in order of appearance.',
+      description: 'Kanji words/compounds (jukugo, kanji names, kanji words) in reading order.',
       items: {
         type: 'OBJECT',
         properties: {
           compound: { type: 'STRING' },
-          reading: { type: 'STRING', description: 'Contextual reading in hiragana.' },
-          meaning: { type: 'STRING', description: 'Concise English definition.' },
+          reading: { type: 'STRING', description: 'Hiragana reading.' },
+          meaning: { type: 'STRING', description: 'Short English definition.' },
         },
         required: ['compound', 'reading', 'meaning'],
       },
@@ -70,12 +67,11 @@ const SCAN_RESPONSE_SCHEMA = {
   required: ['blurbs', 'compounds'],
 };
 
-const PROMPT_INSTRUCTIONS =
-  'You are an expert Japanese manga OCR and translation engine.\n' +
-  'Step 1 — Reading Order: Identify the manga panels in traditional Japanese reading order: top-right panel first, moving right-to-left across each row of panels, then top-to-bottom. Within each panel, read speech bubbles and narration boxes from rightmost to leftmost, top to bottom. Within each vertical bubble, read columns from rightmost column to leftmost column, top to bottom.\n' +
-  'Step 2 — Transcribe & Translate ("blurbs"): For each bubble/box in that exact reading order, transcribe the exact Japanese text ("japanese"), provide a natural English translation ("translation"), explain subtleties/pronouns/grammar/nuances ("notes"), and output its normalized bounding box "box": [ymin, xmin, ymax, xmax] (0 to 1000 scale). Omit tiny furigana ruby readings and pure kana sound effects (SFX).\n' +
-  'Step 3 — Extract Compounds ("compounds"): List every Kanji word/compound (jukugo, kanji names, or standalone kanji words) appearing in the transcribed dialogue in the same order of appearance, with its contextual hiragana "reading" and concise English "meaning". Do NOT include pure kana words.\n' +
-  'Be 100% faithful to the actual text on the page—never invent or guess unseen dialogue.';
+const SYSTEM_INSTRUCTION =
+  'You are a fast, exact Japanese manga OCR and translation engine. Follow traditional manga reading order strictly: panels top-right to bottom-left; bubbles rightmost to leftmost; vertical columns rightmost to leftmost, top to bottom. Omit tiny furigana and pure kana SFX. Never invent unseen text. Keep notes to 1 concise sentence.';
+
+const IMAGE_PROMPT =
+  'Extract all dialogue/narration bubbles in exact R->L, top->bottom order into "blurbs" (japanese, translation, 1-sentence notes, and [ymin, xmin, ymax, xmax] 0-1000 box), and all Kanji words/compounds into "compounds" (compound, hiragana reading, short meaning).';
 
 async function fetchWithTimeout(
   url: string,
@@ -149,7 +145,7 @@ function parseGeminiScanResponse(jsonText: string): ExtractedScanData {
     }
   }
 
-  // 2. Derive individual Kanji deterministically from ordered blurbs (guaranteeing exact order & counts)
+  // 2. Derive individual Kanji deterministically from ordered blurbs
   const orderedDialogueText = blurbs.map((b) => b.japanese).join('');
   let rawKanjiFallback = '';
   if (Array.isArray(parsed.kanji_in_order)) {
@@ -212,17 +208,20 @@ function parseGeminiScanResponse(jsonText: string): ExtractedScanData {
 }
 
 function buildGenerationConfig(model: string) {
-  const base: Record<string, any> = {
-    temperature: 0.1,
+  const config: Record<string, any> = {
     responseMimeType: 'application/json',
     responseSchema: SCAN_RESPONSE_SCHEMA,
   };
 
-  if (model.startsWith('gemini-3.8') || model.startsWith('gemini-3.7') || model.startsWith('gemini-3.6')) {
-    base.thinkingConfig = { thinkingLevel: 'low' };
+  // Gemini 3.5 Flash-Lite and 3.6 Flash support minimal thinking (target <10s)
+  // Gemini 2.5 Flash-Lite uses thinkingBudget: 0 for zero-thinking speed
+  if (model.startsWith('gemini-3.5-flash-lite') || model.startsWith('gemini-3.6-flash')) {
+    config.thinkingConfig = { thinkingLevel: 'minimal' };
+  } else if (model.startsWith('gemini-2.5-flash-lite')) {
+    config.thinkingConfig = { thinkingBudget: 0 };
   }
 
-  return base;
+  return config;
 }
 
 export async function scanMangaImage(
@@ -230,14 +229,19 @@ export async function scanMangaImage(
   mimeType: string = 'image/jpeg'
 ): Promise<ExtractedScanData> {
   const apiKey = await getApiKey();
-  const models = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash'];
+  // Free-tier optimized fast models in order of speed + OCR accuracy
+  const models = ['gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-2.5-flash-lite'];
   let lastError: any = null;
 
   for (const model of models) {
     try {
       const body = {
+        systemInstruction: {
+          parts: [{ text: SYSTEM_INSTRUCTION }],
+        },
         contents: [
           {
+            role: 'user',
             parts: [
               {
                 inlineData: {
@@ -246,7 +250,7 @@ export async function scanMangaImage(
                 },
               },
               {
-                text: PROMPT_INSTRUCTIONS,
+                text: IMAGE_PROMPT,
               },
             ],
           },
@@ -267,17 +271,24 @@ export async function scanMangaImage(
         return parseGeminiScanResponse(text);
       } else {
         const errJson = await response.json().catch(() => null);
-        lastError = new Error(errJson?.error?.message || `Status ${response.status}`);
-        // Don't retry on invalid API key (400/401/403)
+        const msg = errJson?.error?.message || `Status ${response.status}`;
+        lastError = new Error(msg);
+
         if (response.status === 401 || response.status === 403) {
-          throw lastError;
+          throw new Error('Invalid or unauthorized Gemini API key. Check your key in "Key".');
+        }
+        if (response.status === 429) {
+          lastError = new Error('Free-tier rate limit reached. Wait a few seconds and try again.');
         }
       }
     } catch (err: any) {
       if (err?.name === 'AbortError') {
-        lastError = new Error('Scan timed out. Please try again with a clearer or smaller photo.');
+        lastError = new Error('Scan timed out (>14s). Try a closer crop or better lighting.');
       } else {
         lastError = err;
+        if (err?.message?.includes('API key')) {
+          throw err;
+        }
       }
     }
   }
@@ -292,15 +303,17 @@ export async function scanMangaText(text: string): Promise<ExtractedScanData> {
   const apiKey = await getApiKey();
 
   const prompt =
-    `Analyze the following Japanese manga text in exact reading order:\n"""\n${text}\n"""\n` +
-    '1. Split into logical dialogue/narrative units in "blurbs" with exact "japanese", natural English "translation", and nuance "notes".\n' +
-    '2. Extract all Kanji words/compounds in "compounds" with contextual hiragana "reading" and concise English "meaning".';
+    `Analyze this Japanese manga text in exact reading order:\n"""\n${text}\n"""\n` +
+    'Split into "blurbs" (japanese, translation, 1-sentence notes, [0,0,0,0] box) and extract Kanji words into "compounds" (compound, hiragana reading, short meaning).';
 
-  const models = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash'];
+  const models = ['gemini-3.5-flash-lite', 'gemini-2.5-flash-lite'];
   for (const model of models) {
     try {
       const body = {
-        contents: [{ parts: [{ text: prompt }] }],
+        systemInstruction: {
+          parts: [{ text: SYSTEM_INSTRUCTION }],
+        },
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: buildGenerationConfig(model),
       };
 

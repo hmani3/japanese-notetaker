@@ -44,19 +44,25 @@ export const CatalogTab: React.FC<CatalogTabProps> = ({
 
   const catalogKanjiList = useMemo(() => Object.keys(catalog), [catalog]);
 
+  // Pre-merge 13,108 Jisho entries with catalog counts only when catalog or scope changes
+  const mergedJishoList = useMemo(() => {
+    if (kanjiScope !== 'jisho') return [];
+    const allJisho = getAllJishoKanji();
+    return allJisho.map((entry) => {
+      const inCat = catalog[entry.kanji];
+      return inCat ? { ...entry, ...inCat, jishoFreq: entry.jishoFreq } : entry;
+    });
+  }, [catalog, kanjiScope]);
+
+  const resemblanceRankMap = useMemo(() => {
+    const map = new Map<string, number>();
+    resemblanceOrder.forEach((char, idx) => map.set(char, idx));
+    return map;
+  }, [resemblanceOrder]);
+
   // 1. Filtered & Sorted Individual Kanji (either In Catalog or All Jisho)
   const kanjiEntries = useMemo(() => {
-    let list: KanjiEntry[];
-
-    if (kanjiScope === 'jisho') {
-      const allJisho = getAllJishoKanji();
-      list = allJisho.map((entry) => {
-        const inCat = catalog[entry.kanji];
-        return inCat ? { ...entry, ...inCat, jishoFreq: entry.jishoFreq } : entry;
-      });
-    } else {
-      list = Object.values(catalog);
-    }
+    let list: KanjiEntry[] = kanjiScope === 'jisho' ? [...mergedJishoList] : Object.values(catalog);
 
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
@@ -70,11 +76,9 @@ export const CatalogTab: React.FC<CatalogTabProps> = ({
     }
 
     return list.sort((a, b) => {
-      if (sortMode === 'resemblance' && resemblanceOrder.length > 0) {
-        const indexA = resemblanceOrder.indexOf(a.kanji);
-        const indexB = resemblanceOrder.indexOf(b.kanji);
-        const rankA = indexA !== -1 ? indexA : 99999;
-        const rankB = indexB !== -1 ? indexB : 99999;
+      if (sortMode === 'resemblance' && resemblanceRankMap.size > 0) {
+        const rankA = resemblanceRankMap.get(a.kanji) ?? 99999;
+        const rankB = resemblanceRankMap.get(b.kanji) ?? 99999;
         if (rankA !== rankB) return rankA - rankB;
         return b.frequency - a.frequency;
       } else if (sortMode === 'frequency') {
@@ -98,7 +102,7 @@ export const CatalogTab: React.FC<CatalogTabProps> = ({
       }
       return 0;
     });
-  }, [catalog, kanjiScope, searchQuery, sortMode, resemblanceOrder]);
+  }, [catalog, kanjiScope, mergedJishoList, searchQuery, sortMode, resemblanceRankMap]);
 
   // 2. Filtered & Sorted Compounds
   const compoundEntries = useMemo(() => {

@@ -39,6 +39,8 @@ export async function recognizeKanjiDrawing(
     ],
   };
 
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
   try {
     const response = await fetch(
       'https://inputtools.google.com/request?itc=ja-t-i0-handwrit&app=demopage',
@@ -48,6 +50,7 @@ export async function recognizeKanjiDrawing(
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
+        signal: controller.signal,
       }
     );
 
@@ -75,5 +78,7 @@ export async function recognizeKanjiDrawing(
     return [];
   } catch {
     return [];
+  } finally {
+    clearTimeout(timer);
   }
 }

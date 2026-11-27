@@ -17,7 +17,7 @@ import { scanMangaImage, scanMangaText } from '../services/visionScanner';
 import { ExtractedScanData } from '../types';
 import { showAlert } from '../utils/alerts';
 
-const MAX_WEB_IMAGE_DIM = 1600;
+const MAX_WEB_IMAGE_DIM = 1280;
 
 /**
  * Downscales large mobile camera photos on web via HTML5 canvas
@@ -55,7 +55,7 @@ async function compressBase64OnWeb(
       }
 
       ctx.drawImage(img, 0, 0, targetW, targetH);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
       const stripped = dataUrl.split(',')[1];
       resolve({ base64: stripped || base64, aspectRatio });
     };
@@ -165,6 +165,7 @@ export const ScanTab: React.FC<ScanTabProps> = ({
   };
 
   const handlePasteClipboard = async () => {
+    if (isScanning) return;
     const text = await Clipboard.getStringAsync();
     if (!text.trim()) {
       showAlert('Clipboard Empty', 'No text found in clipboard.');
@@ -182,6 +183,7 @@ export const ScanTab: React.FC<ScanTabProps> = ({
   };
 
   const handleDirectSubmit = async () => {
+    if (isScanning) return;
     if (!directText.trim()) {
       showAlert('Empty Input', 'Enter or paste Japanese text.');
       return;

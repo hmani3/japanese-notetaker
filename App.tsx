@@ -54,10 +54,12 @@ function MainApp() {
   const [showKeyModal, setShowKeyModal] = useState(false);
 
   const refreshData = async () => {
-    const loadedCatalog = await loadCatalog();
-    const loadedCompounds = await loadCompoundsCatalog();
-    const loadedHistory = await loadHistory();
-    const loadedStats = await loadStats();
+    const [loadedCatalog, loadedCompounds, loadedHistory, loadedStats] = await Promise.all([
+      loadCatalog(),
+      loadCompoundsCatalog(),
+      loadHistory(),
+      loadStats(),
+    ]);
     setCatalog(loadedCatalog);
     setCompoundsCatalog(loadedCompounds);
     setHistory(loadedHistory);
@@ -67,10 +69,12 @@ function MainApp() {
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const loadedCatalog = await loadCatalog();
-      const loadedCompounds = await loadCompoundsCatalog();
-      const loadedHistory = await loadHistory();
-      const loadedStats = await loadStats();
+      const [loadedCatalog, loadedCompounds, loadedHistory, loadedStats] = await Promise.all([
+        loadCatalog(),
+        loadCompoundsCatalog(),
+        loadHistory(),
+        loadStats(),
+      ]);
       if (mounted) {
         setCatalog(loadedCatalog);
         setCompoundsCatalog(loadedCompounds);

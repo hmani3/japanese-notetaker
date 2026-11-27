@@ -61,6 +61,9 @@ export const ScanSummaryModal: React.FC<ScanSummaryModalProps> = ({
   const [showOverlay, setShowOverlay] = useState(true);
   const [selectedBlurbIdx, setSelectedBlurbIdx] = useState<number | null>(null);
 
+  const effectiveViewMode: ViewMode =
+    viewMode === 'page' && !scanData?.imageUri ? 'individual' : viewMode;
+
   // 1. Processed Individual Kanji List
   const kanjiItems = useMemo(() => {
     if (!scanData) return [];
@@ -218,7 +221,7 @@ export const ScanSummaryModal: React.FC<ScanSummaryModalProps> = ({
           </View>
 
           {/* Sort & Order Controls */}
-          {viewMode === 'individual' ? (
+          {effectiveViewMode === 'individual' ? (
             <View style={styles.sortBar}>
               <TouchableOpacity
                 style={[styles.sortBtn, kanjiSort === 'order' && styles.sortBtnActive]}
@@ -249,7 +252,7 @@ export const ScanSummaryModal: React.FC<ScanSummaryModalProps> = ({
                 </Text>
               </TouchableOpacity>
             </View>
-          ) : viewMode === 'compounds' ? (
+          ) : effectiveViewMode === 'compounds' ? (
             <View style={styles.sortBar}>
               <TouchableOpacity
                 style={[styles.sortBtn, compoundSort === 'order' && styles.sortBtnActive]}
@@ -285,7 +288,7 @@ export const ScanSummaryModal: React.FC<ScanSummaryModalProps> = ({
                 </Text>
               </TouchableOpacity>
             </View>
-          ) : viewMode === 'blurbs' ? (
+          ) : effectiveViewMode === 'blurbs' ? (
             <View style={styles.blurbHintBar}>
               <Text style={styles.blurbHintText}>Reading Order: Right → Left, Top → Bottom</Text>
             </View>
@@ -310,7 +313,7 @@ export const ScanSummaryModal: React.FC<ScanSummaryModalProps> = ({
           )}
 
           {/* Fully Scrollable List with flex: 1 */}
-          {viewMode === 'individual' ? (
+          {effectiveViewMode === 'individual' ? (
             <FlatList
               style={styles.scrollList}
               data={kanjiItems}
@@ -351,7 +354,7 @@ export const ScanSummaryModal: React.FC<ScanSummaryModalProps> = ({
                 );
               }}
             />
-          ) : viewMode === 'compounds' ? (
+          ) : effectiveViewMode === 'compounds' ? (
             <FlatList
               style={styles.scrollList}
               data={compoundItems}
@@ -375,7 +378,7 @@ export const ScanSummaryModal: React.FC<ScanSummaryModalProps> = ({
                 </View>
               )}
             />
-          ) : viewMode === 'blurbs' ? (
+          ) : effectiveViewMode === 'blurbs' ? (
             <FlatList
               style={styles.scrollList}
               data={scanData.blurbs || []}
