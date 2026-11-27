@@ -4,12 +4,13 @@ import { extractKanji } from './kanjiExtractor';
 
 const API_KEY_STORAGE = '@manga_kanji_gemini_key';
 const DEFAULT_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
+const REQUEST_TIMEOUT_MS = 28000;
 
 export async function getApiKey(): Promise<string> {
   const custom = await AsyncStorage.getItem(API_KEY_STORAGE);
   const key = custom || DEFAULT_KEY;
   if (!key) {
-    throw new Error('Gemini API key is not configured. Add it in .env or settings.');
+    throw new Error('Gemini API key is not configured. Tap "Key" in the top right to add yours.');
   }
   return key;
 }
@@ -18,30 +19,91 @@ export async function setApiKey(key: string): Promise<void> {
   await AsyncStorage.setItem(API_KEY_STORAGE, key.trim());
 }
 
+const SCAN_RESPONSE_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    blurbs: {
+      type: 'ARRAY',
+      description:
+        'All speech bubbles, thought bubbles, and narration boxes in exact manga reading order (right-to-left, top-to-bottom).',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          japanese: {
+            type: 'STRING',
+            description: 'Exact Japanese text transcribed from the bubble (excluding furigana).',
+          },
+          translation: {
+            type: 'STRING',
+            description: 'Natural, faithful English translation capturing tone and character voice.',
+          },
+          notes: {
+            type: 'STRING',
+            description:
+              'Concise notes on subtleties, pronouns, grammar, idioms, archaic kanji, or context.',
+          },
+        },
+        required: ['japanese', 'translation', 'notes'],
+      },
+    },
+    compounds: {
+      type: 'ARRAY',
+      description:
+        'All Kanji words/compounds (jukugo, multi-kanji names, and standalone kanji words) in order of appearance.',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          compound: { type: 'STRING' },
+          reading: { type: 'STRING', description: 'Contextual reading in hiragana.' },
+          meaning: { type: 'STRING', description: 'Concise English definition.' },
+        },
+        required: ['compound', 'reading', 'meaning'],
+      },
+    },
+  },
+  required: ['blurbs', 'compounds'],
+};
+
 const PROMPT_INSTRUCTIONS =
-  'Examine this manga page. Read all speech bubbles, dialogue, and narration in traditional manga reading order (from right to left, top to bottom).\n' +
-  'Extract three categories:\n' +
-  '1. "compounds": An array of all Kanji words/compounds (jukugo, multi-kanji names, and standalone kanji words) in order of appearance. For each provide:\n' +
-  '   - "compound": the word in Kanji (e.g. "呼吸", "全集中")\n' +
-  '   - "reading": the contextual reading in Hiragana (e.g. "こきゅう", "ぜんしゅうちゅう")\n' +
-  '   - "meaning": concise English definition\n' +
-  '2. "kanji_in_order": An array of every single individual Kanji character in exact order of appearance from right to left, top to bottom. Repeat a Kanji if it appears multiple times.\n' +
-  '3. "blurbs": An array of each dialogue speech bubble, thought, or conjoined narrative sentence in reading order (R->L, top-to-bottom). For each provide:\n' +
-  '   - "japanese": the complete Japanese dialogue or sentence as seen on the page\n' +
-  '   - "translation": natural, faithful English translation capturing tone and intent\n' +
-  '   - "notes": concise explanation of subtleties, nuances, character pronouns/tone, grammar subtleties, archaic forms, or cultural/story context\n' +
-  'Strict rules:\n' +
-  '- Do NOT include pure kana sound effects (SFX), furigana kana, or non-kanji words in "compounds".\n' +
-  '- Do NOT include any Hiragana, Katakana, English, or punctuation in "kanji_in_order".\n' +
-  '- Output ONLY valid JSON matching this schema: {"compounds": [{"compound": "...", "reading": "...", "meaning": "..."}], "kanji_in_order": ["..."], "blurbs": [{"japanese": "...", "translation": "...", "notes": "..."}]}';
+  'You are an expert Japanese manga OCR and translation engine.\n' +
+  'Step 1 — Reading Order: Identify the manga panels in traditional Japanese reading order: top-right panel first, moving right-to-left across each row of panels, then top-to-bottom. Within each panel, read speech bubbles and narration boxes from rightmost to leftmost, top to bottom. Within each vertical bubble, read columns from rightmost column to leftmost column, top to bottom.\n' +
+  'Step 2 — Transcribe & Translate ("blurbs"): For each bubble/box in that exact reading order, transcribe the exact Japanese text ("japanese"), provide a natural English translation ("translation"), and explain subtleties/pronouns/grammar/nuances ("notes"). Omit tiny furigana ruby readings and pure kana sound effects (SFX).\n' +
+  'Step 3 — Extract Compounds ("compounds"): List every Kanji word/compound (jukugo, kanji names, or standalone kanji words) appearing in the transcribed dialogue in the same order of appearance, with its contextual hiragana "reading" and concise English "meaning". Do NOT include pure kana words.\n' +
+  'Be 100% faithful to the actual text on the page—never invent or guess unseen dialogue.';
+
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeoutMs: number = REQUEST_TIMEOUT_MS
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function countOccurrences(haystack: string, needle: string): number {
+  if (!haystack || !needle) return 0;
+  let count = 0;
+  let pos = 0;
+  while ((pos = haystack.indexOf(needle, pos)) !== -1) {
+    count += 1;
+    pos += needle.length;
+  }
+  return count;
+}
 
 function parseGeminiScanResponse(jsonText: string): ExtractedScanData {
   let parsed: any = {};
   try {
     parsed = JSON.parse(jsonText);
   } catch {
-    // If response was wrapped in markdown code blocks ```json ... ```
-    const match = jsonText.match(/```json\s*([\s\S]*?)\s*```/) || jsonText.match(/```\s*([\s\S]*?)\s*```/);
+    const match =
+      jsonText.match(/```json\s*([\s\S]*?)\s*```/) ||
+      jsonText.match(/```\s*([\s\S]*?)\s*```/);
     if (match) {
       try {
         parsed = JSON.parse(match[1]);
@@ -51,43 +113,7 @@ function parseGeminiScanResponse(jsonText: string): ExtractedScanData {
     }
   }
 
-  // 1. Process individual kanji
-  let rawKanjiList: string[] = [];
-  if (Array.isArray(parsed.kanji_in_order)) {
-    rawKanjiList = parsed.kanji_in_order.map(String);
-  }
-  const kanjiString = rawKanjiList.join('') || jsonText;
-  const individual = extractKanji(kanjiString);
-
-  // 2. Process compounds
-  const rawCompounds = Array.isArray(parsed.compounds) ? parsed.compounds : [];
-  const compoundsMap: Record<string, ScannedCompoundItem> = {};
-  let compoundOrder = 0;
-
-  for (const item of rawCompounds) {
-    const word = String(item.compound || item.word || '').trim();
-    // Verify word actually contains at least one Kanji
-    if (!word || !/[\u4E00-\u9FAF\u3400-\u4DBF\uF900-\uFAFF]/.test(word)) {
-      continue;
-    }
-
-    const reading = String(item.reading || item.hiragana || '').trim();
-    const meaning = String(item.meaning || '').trim();
-
-    if (compoundsMap[word]) {
-      compoundsMap[word].countOnPage += 1;
-    } else {
-      compoundsMap[word] = {
-        compound: word,
-        reading: reading || '—',
-        meaning: meaning || 'No definition',
-        countOnPage: 1,
-        orderIndex: compoundOrder++,
-      };
-    }
-  }
-
-  // 3. Process blurbs (dialogue & narrative translations with nuance notes)
+  // 1. Process blurbs first (canonical R->L, top-to-bottom order)
   const rawBlurbs = Array.isArray(parsed.blurbs) ? parsed.blurbs : [];
   const blurbs: DialogueBlurb[] = [];
   let blurbIndex = 0;
@@ -108,44 +134,113 @@ function parseGeminiScanResponse(jsonText: string): ExtractedScanData {
     }
   }
 
+  // 2. Derive individual Kanji deterministically from ordered blurbs (guaranteeing exact order & counts)
+  const orderedDialogueText = blurbs.map((b) => b.japanese).join('');
+  let rawKanjiFallback = '';
+  if (Array.isArray(parsed.kanji_in_order)) {
+    rawKanjiFallback = parsed.kanji_in_order.map(String).join('');
+  }
+  const individual = extractKanji(orderedDialogueText || rawKanjiFallback);
+
+  // 3. Process compounds and sort deterministically by first appearance in orderedDialogueText
+  const rawCompounds = Array.isArray(parsed.compounds) ? parsed.compounds : [];
+  const compoundsMap: Record<
+    string,
+    ScannedCompoundItem & { firstPos: number; modelIndex: number }
+  > = {};
+  let modelOrder = 0;
+
+  for (const item of rawCompounds) {
+    const word = String(item.compound || item.word || '').trim();
+    if (!word || !/[\u4E00-\u9FAF\u3400-\u4DBF\uF900-\uFAFF]/.test(word)) {
+      continue;
+    }
+
+    const reading = String(item.reading || item.hiragana || '').trim();
+    const meaning = String(item.meaning || '').trim();
+
+    if (compoundsMap[word]) {
+      compoundsMap[word].countOnPage += 1;
+    } else {
+      const firstPos = orderedDialogueText ? orderedDialogueText.indexOf(word) : -1;
+      const textCount = orderedDialogueText ? countOccurrences(orderedDialogueText, word) : 0;
+      compoundsMap[word] = {
+        compound: word,
+        reading: reading || '—',
+        meaning: meaning || 'No definition',
+        countOnPage: textCount > 0 ? textCount : 1,
+        orderIndex: modelOrder,
+        firstPos: firstPos !== -1 ? firstPos : Number.MAX_SAFE_INTEGER,
+        modelIndex: modelOrder++,
+      };
+    }
+  }
+
+  const sortedCompounds: ScannedCompoundItem[] = Object.values(compoundsMap)
+    .sort((a, b) => {
+      if (a.firstPos !== b.firstPos) return a.firstPos - b.firstPos;
+      return a.modelIndex - b.modelIndex;
+    })
+    .map((item, idx) => ({
+      compound: item.compound,
+      reading: item.reading,
+      meaning: item.meaning,
+      countOnPage: item.countOnPage,
+      orderIndex: idx,
+    }));
+
   return {
     individual,
-    compounds: Object.values(compoundsMap),
+    compounds: sortedCompounds,
     blurbs,
   };
 }
 
-export async function scanMangaImage(base64Image: string): Promise<ExtractedScanData> {
-  const apiKey = await getApiKey();
-
-  const body = {
-    contents: [
-      {
-        parts: [
-          {
-            inlineData: {
-              mimeType: 'image/jpeg',
-              data: base64Image,
-            },
-          },
-          {
-            text: PROMPT_INSTRUCTIONS,
-          },
-        ],
-      },
-    ],
-    generationConfig: {
-      responseMimeType: 'application/json',
-    },
+function buildGenerationConfig(model: string) {
+  const base: Record<string, any> = {
+    temperature: 0.1,
+    responseMimeType: 'application/json',
+    responseSchema: SCAN_RESPONSE_SCHEMA,
   };
 
-  const models = ['gemini-3.5-flash', 'gemini-3.1-flash-lite'];
+  if (model.startsWith('gemini-3.8') || model.startsWith('gemini-3.7') || model.startsWith('gemini-3.6')) {
+    base.thinkingConfig = { thinkingLevel: 'low' };
+  }
+
+  return base;
+}
+
+export async function scanMangaImage(
+  base64Image: string,
+  mimeType: string = 'image/jpeg'
+): Promise<ExtractedScanData> {
+  const apiKey = await getApiKey();
+  const models = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash'];
   let lastError: any = null;
 
   for (const model of models) {
     try {
+      const body = {
+        contents: [
+          {
+            parts: [
+              {
+                inlineData: {
+                  mimeType,
+                  data: base64Image,
+                },
+              },
+              {
+                text: PROMPT_INSTRUCTIONS,
+              },
+            ],
+          },
+        ],
+        generationConfig: buildGenerationConfig(model),
+      };
+
       const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      const response = await fetch(endpoint, {
+      const response = await fetchWithTimeout(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -158,9 +253,17 @@ export async function scanMangaImage(base64Image: string): Promise<ExtractedScan
       } else {
         const errJson = await response.json().catch(() => null);
         lastError = new Error(errJson?.error?.message || `Status ${response.status}`);
+        // Don't retry on invalid API key (400/401/403)
+        if (response.status === 401 || response.status === 403) {
+          throw lastError;
+        }
       }
-    } catch (err) {
-      lastError = err;
+    } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        lastError = new Error('Scan timed out. Please try again with a clearer or smaller photo.');
+      } else {
+        lastError = err;
+      }
     }
   }
 
@@ -174,29 +277,20 @@ export async function scanMangaText(text: string): Promise<ExtractedScanData> {
   const apiKey = await getApiKey();
 
   const prompt =
-    `Given Japanese text: "${text}".\n` +
-    'Extract three categories:\n' +
-    '1. "compounds": words containing kanji with compound reading in hiragana and concise english meaning\n' +
-    '2. "kanji_in_order": individual kanji characters in exact order of appearance.\n' +
-    '3. "blurbs": an array of dialogue or conjoined sentence units with "japanese", natural English "translation", and "notes" explaining nuances/subtleties.\n' +
-    'Return valid JSON matching schema: {"compounds": [{"compound": "...", "reading": "...", "meaning": "..."}], "kanji_in_order": ["..."], "blurbs": [{"japanese": "...", "translation": "...", "notes": "..."}]}';
+    `Analyze the following Japanese manga text in exact reading order:\n"""\n${text}\n"""\n` +
+    '1. Split into logical dialogue/narrative units in "blurbs" with exact "japanese", natural English "translation", and nuance "notes".\n' +
+    '2. Extract all Kanji words/compounds in "compounds" with contextual hiragana "reading" and concise English "meaning".';
 
-  const body = {
-    contents: [
-      {
-        parts: [{ text: prompt }],
-      },
-    ],
-    generationConfig: {
-      responseMimeType: 'application/json',
-    },
-  };
-
-  const models = ['gemini-3.5-flash', 'gemini-3.1-flash-lite'];
+  const models = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash'];
   for (const model of models) {
     try {
+      const body = {
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: buildGenerationConfig(model),
+      };
+
       const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      const response = await fetch(endpoint, {
+      const response = await fetchWithTimeout(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -212,9 +306,8 @@ export async function scanMangaText(text: string): Promise<ExtractedScanData> {
     }
   }
 
-  // Fallback if network fails: extract individual kanji via regex
+  // Offline fallback
   const individual = extractKanji(text);
-  // Match contiguous kanji sequences as compounds
   const compoundMatches = text.match(/[\u4E00-\u9FAF\u3400-\u4DBF]{2,}/g) || [];
   const compoundsMap: Record<string, ScannedCompoundItem> = {};
   let idx = 0;

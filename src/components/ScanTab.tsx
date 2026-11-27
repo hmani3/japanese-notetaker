@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
+  Platform,
   StyleSheet,
   Text,
   TextInput,
@@ -15,6 +15,50 @@ import { ScanSummaryModal } from './ScanSummaryModal';
 import { recordScanData } from '../services/storage';
 import { scanMangaImage, scanMangaText } from '../services/visionScanner';
 import { ExtractedScanData } from '../types';
+import { showAlert } from '../utils/alerts';
+
+const MAX_WEB_IMAGE_DIM = 1600;
+
+/**
+ * Downscales large mobile camera photos on web via HTML5 canvas
+ * so uploads are ~200KB instead of 5-15MB while keeping manga Kanji sharp.
+ */
+async function compressBase64OnWeb(base64: string, mimeType: string = 'image/jpeg'): Promise<string> {
+  if (Platform.OS !== 'web' || typeof document === 'undefined' || typeof Image === 'undefined') {
+    return base64;
+  }
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const { width, height } = img;
+      if (width <= MAX_WEB_IMAGE_DIM && height <= MAX_WEB_IMAGE_DIM) {
+        resolve(base64);
+        return;
+      }
+
+      const scale = MAX_WEB_IMAGE_DIM / Math.max(width, height);
+      const targetW = Math.round(width * scale);
+      const targetH = Math.round(height * scale);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = targetW;
+      canvas.height = targetH;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(base64);
+        return;
+      }
+
+      ctx.drawImage(img, 0, 0, targetW, targetH);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+      const stripped = dataUrl.split(',')[1];
+      resolve(stripped || base64);
+    };
+    img.onerror = () => resolve(base64);
+    img.src = `data:${mimeType};base64,${base64}`;
+  });
+}
 
 interface ScanTabProps {
   onScanRecorded: () => void;
@@ -45,7 +89,7 @@ export const ScanTab: React.FC<ScanTabProps> = ({
       data.compounds.length === 0 &&
       (!data.blurbs || data.blurbs.length === 0)
     ) {
-      Alert.alert('No Content Found', 'No Kanji, compounds, or dialogue detected on this page.');
+      showAlert('No Content Found', 'No Kanji, compounds, or dialogue detected on this page.');
       return;
     }
     setScanData(data);
@@ -55,60 +99,61 @@ export const ScanTab: React.FC<ScanTabProps> = ({
     }
   };
 
-  const handleImageScan = async (base64: string) => {
+  const handleImageScan = async (base64: string, mimeType?: string) => {
     setIsScanning(true);
     try {
-      const data = await scanMangaImage(base64);
+      const optimizedBase64 = await compressBase64OnWeb(base64, mimeType || 'image/jpeg');
+      const data = await scanMangaImage(optimizedBase64, 'image/jpeg');
       setIsScanning(false);
       handleExtracted(data);
     } catch (err: any) {
       setIsScanning(false);
-      Alert.alert('Scan Failed', err.message || 'Error scanning image.');
+      showAlert('Scan Failed', err.message || 'Error scanning image.');
     }
   };
 
   const handleTakePhoto = async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Permission Denied', 'Camera permission is required.');
+      showAlert('Permission Denied', 'Camera permission is required.');
       return;
     }
 
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ['images'],
       allowsEditing: false,
-      quality: 0.9,
+      quality: 0.75,
       base64: true,
     });
 
     if (!result.canceled && result.assets[0]?.base64) {
-      await handleImageScan(result.assets[0].base64);
+      await handleImageScan(result.assets[0].base64, result.assets[0].mimeType);
     }
   };
 
   const handlePickPhoto = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Permission Denied', 'Photo library permission is required.');
+      showAlert('Permission Denied', 'Photo library permission is required.');
       return;
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: false,
-      quality: 0.9,
+      quality: 0.75,
       base64: true,
     });
 
     if (!result.canceled && result.assets[0]?.base64) {
-      await handleImageScan(result.assets[0].base64);
+      await handleImageScan(result.assets[0].base64, result.assets[0].mimeType);
     }
   };
 
   const handlePasteClipboard = async () => {
     const text = await Clipboard.getStringAsync();
     if (!text.trim()) {
-      Alert.alert('Clipboard Empty', 'No text found in clipboard.');
+      showAlert('Clipboard Empty', 'No text found in clipboard.');
       return;
     }
     setIsScanning(true);
@@ -118,13 +163,13 @@ export const ScanTab: React.FC<ScanTabProps> = ({
       handleExtracted(data);
     } catch {
       setIsScanning(false);
-      Alert.alert('Processing Failed', 'Could not process clipboard text.');
+      showAlert('Processing Failed', 'Could not process clipboard text.');
     }
   };
 
   const handleDirectSubmit = async () => {
     if (!directText.trim()) {
-      Alert.alert('Empty Input', 'Enter or paste Japanese text.');
+      showAlert('Empty Input', 'Enter or paste Japanese text.');
       return;
     }
     setIsScanning(true);
@@ -135,7 +180,7 @@ export const ScanTab: React.FC<ScanTabProps> = ({
       handleExtracted(data);
     } catch {
       setIsScanning(false);
-      Alert.alert('Processing Failed', 'Could not process text.');
+      showAlert('Processing Failed', 'Could not process text.');
     }
   };
 
@@ -146,12 +191,12 @@ export const ScanTab: React.FC<ScanTabProps> = ({
       setShowSummary(false);
       setScanData(null);
       onScanRecorded();
-      Alert.alert(
+      showAlert(
         'Saved',
         `Catalogued ${newKanjiCount} new Kanji (${updatedKanjiCount} updated) and ${newCompoundCount} new Compounds.`
       );
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'Failed to save.');
+      showAlert('Error', err.message || 'Failed to save.');
     }
   };
 

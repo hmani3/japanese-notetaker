@@ -15,8 +15,13 @@ import { KanjiDetailModal } from './KanjiDetailModal';
 interface ScanSummaryModalProps {
   visible: boolean;
   scanData: ExtractedScanData | null;
-  onSave: () => void;
+  onSave?: () => void;
   onCancel: () => void;
+  isHistory?: boolean;
+  title?: string;
+  subtitlePrefix?: string;
+  onDelete?: () => void;
+  kanjiDetailsMap?: Record<string, KanjiEntry>;
 }
 
 type ViewMode = 'individual' | 'compounds' | 'blurbs';
@@ -33,6 +38,7 @@ interface ScannedKanjiItem {
   jlpt: number | null;
   strokeCount: number | null;
   grade: number | null;
+  jishoFreq?: number | null;
 }
 
 export const ScanSummaryModal: React.FC<ScanSummaryModalProps> = ({
@@ -40,6 +46,11 @@ export const ScanSummaryModal: React.FC<ScanSummaryModalProps> = ({
   scanData,
   onSave,
   onCancel,
+  isHistory = false,
+  title,
+  subtitlePrefix,
+  onDelete,
+  kanjiDetailsMap,
 }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('individual');
   const [kanjiSort, setKanjiSort] = useState<KanjiSortMode>('order');
@@ -51,7 +62,8 @@ export const ScanSummaryModal: React.FC<ScanSummaryModalProps> = ({
     if (!scanData) return [];
 
     const list: ScannedKanjiItem[] = scanData.individual.unique.map((char, index) => {
-      const details = lookupKanji(char);
+      const saved = kanjiDetailsMap?.[char];
+      const details = saved || lookupKanji(char);
       return {
         kanji: char,
         countOnPage: scanData.individual.counts[char] || 1,
@@ -62,6 +74,7 @@ export const ScanSummaryModal: React.FC<ScanSummaryModalProps> = ({
         jlpt: details.jlpt,
         strokeCount: details.strokeCount,
         grade: details.grade,
+        jishoFreq: details.jishoFreq ?? null,
       };
     });
 
@@ -79,7 +92,7 @@ export const ScanSummaryModal: React.FC<ScanSummaryModalProps> = ({
       }
       return 0;
     });
-  }, [scanData, kanjiSort]);
+  }, [scanData, kanjiSort, kanjiDetailsMap]);
 
   // 2. Processed Compounds List
   const compoundItems = useMemo(() => {
@@ -103,17 +116,19 @@ export const ScanSummaryModal: React.FC<ScanSummaryModalProps> = ({
   if (!scanData) return null;
 
   const handleOpenDetail = (item: ScannedKanjiItem) => {
+    const saved = kanjiDetailsMap?.[item.kanji];
     setDetailEntry({
       kanji: item.kanji,
-      frequency: item.countOnPage,
+      frequency: saved ? saved.frequency : item.countOnPage,
       meanings: item.meanings,
       onyomi: item.onyomi,
       kunyomi: item.kunyomi,
       jlpt: item.jlpt,
       strokeCount: item.strokeCount,
       grade: item.grade,
-      firstSeen: new Date().toISOString(),
-      lastSeen: new Date().toISOString(),
+      jishoFreq: item.jishoFreq ?? null,
+      firstSeen: saved?.firstSeen || new Date().toISOString(),
+      lastSeen: saved?.lastSeen || new Date().toISOString(),
     });
   };
 
@@ -134,8 +149,9 @@ export const ScanSummaryModal: React.FC<ScanSummaryModalProps> = ({
         <View style={styles.sheet}>
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.title}>Scanned Page</Text>
+            <Text style={styles.title}>{title || (isHistory ? 'Scan Details' : 'Scanned Page')}</Text>
             <Text style={styles.subtitle}>
+              {subtitlePrefix ? `${subtitlePrefix} • ` : ''}
               {scanData.individual.all.length} Kanji ({scanData.individual.unique.length} unique) •{' '}
               {scanData.compounds.length} Compounds
               {scanData.blurbs && scanData.blurbs.length > 0
@@ -356,15 +372,37 @@ export const ScanSummaryModal: React.FC<ScanSummaryModalProps> = ({
           )}
 
           {/* Action Footer */}
-          <View style={styles.footer}>
-            <TouchableOpacity style={styles.discardBtn} onPress={onCancel} activeOpacity={0.7}>
-              <Text style={styles.discardBtnText}>Discard</Text>
-            </TouchableOpacity>
+          {isHistory ? (
+            <View style={styles.footer}>
+              {onDelete ? (
+                <TouchableOpacity style={styles.discardBtn} onPress={onDelete} activeOpacity={0.7}>
+                  <Text style={styles.discardBtnText}>Delete Scan</Text>
+                </TouchableOpacity>
+              ) : null}
 
-            <TouchableOpacity style={styles.saveBtn} onPress={onSave} activeOpacity={0.8}>
-              <Text style={styles.saveBtnText}>Save to Catalog & History</Text>
-            </TouchableOpacity>
-          </View>
+              <TouchableOpacity
+                style={[styles.saveBtn, { backgroundColor: '#33333E' }]}
+                onPress={onCancel}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.saveBtnText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.footer}>
+              <TouchableOpacity style={styles.discardBtn} onPress={onCancel} activeOpacity={0.7}>
+                <Text style={styles.discardBtnText}>Discard</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.saveBtn}
+                onPress={() => onSave?.()}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.saveBtnText}>Save to Catalog & History</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </View>
 

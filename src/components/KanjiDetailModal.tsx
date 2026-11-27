@@ -41,10 +41,20 @@ export const KanjiDetailModal: React.FC<KanjiDetailModalProps> = ({
           <View style={styles.topRow}>
             <Text style={styles.kanjiChar}>{entry.kanji}</Text>
             <View style={styles.topMeta}>
-              <Text style={styles.freqText}>Encountered: {entry.frequency}×</Text>
+              <Text style={styles.freqText}>
+                {entry.frequency > 0
+                  ? `Encountered: ${entry.frequency}×`
+                  : 'Jisho Index (Not in catalog yet)'}
+              </Text>
               {entry.jlpt !== null && <Text style={styles.metaSub}>JLPT N{entry.jlpt}</Text>}
               {entry.strokeCount !== null && (
                 <Text style={styles.metaSub}>{entry.strokeCount} strokes</Text>
+              )}
+              {entry.grade !== null && (
+                <Text style={styles.metaSub}>Grade {entry.grade}</Text>
+              )}
+              {entry.jishoFreq != null && (
+                <Text style={styles.metaSub}>Freq Rank #{entry.jishoFreq}</Text>
               )}
             </View>
           </View>

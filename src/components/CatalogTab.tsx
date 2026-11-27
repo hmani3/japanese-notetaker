@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import {
-  Alert,
   FlatList,
   StyleSheet,
   Text,
@@ -13,6 +12,8 @@ import { KanjiCard } from './KanjiCard';
 import { KanjiDetailModal } from './KanjiDetailModal';
 import { DrawKanjiModal } from './DrawKanjiModal';
 import { clearAllData } from '../services/storage';
+import { getAllJishoKanji } from '../services/dictionary';
+import { confirmAction } from '../utils/alerts';
 
 interface CatalogTabProps {
   catalog: Catalog;
@@ -23,6 +24,7 @@ interface CatalogTabProps {
 }
 
 type CatalogViewMode = 'individual' | 'compounds';
+type KanjiScopeMode = 'catalog' | 'jisho';
 type SortMode = 'frequency' | 'recent' | 'jlpt_or_length' | 'resemblance';
 
 export const CatalogTab: React.FC<CatalogTabProps> = ({
@@ -33,6 +35,7 @@ export const CatalogTab: React.FC<CatalogTabProps> = ({
   onGoToScan,
 }) => {
   const [viewMode, setViewMode] = useState<CatalogViewMode>('individual');
+  const [kanjiScope, setKanjiScope] = useState<KanjiScopeMode>('catalog');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortMode, setSortMode] = useState<SortMode>('frequency');
   const [selectedKanji, setSelectedKanji] = useState<KanjiEntry | null>(null);
@@ -41,9 +44,19 @@ export const CatalogTab: React.FC<CatalogTabProps> = ({
 
   const catalogKanjiList = useMemo(() => Object.keys(catalog), [catalog]);
 
-  // 1. Filtered & Sorted Individual Kanji
+  // 1. Filtered & Sorted Individual Kanji (either In Catalog or All Jisho)
   const kanjiEntries = useMemo(() => {
-    let list = Object.values(catalog);
+    let list: KanjiEntry[];
+
+    if (kanjiScope === 'jisho') {
+      const allJisho = getAllJishoKanji();
+      list = allJisho.map((entry) => {
+        const inCat = catalog[entry.kanji];
+        return inCat ? { ...entry, ...inCat, jishoFreq: entry.jishoFreq } : entry;
+      });
+    } else {
+      list = Object.values(catalog);
+    }
 
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
@@ -60,22 +73,32 @@ export const CatalogTab: React.FC<CatalogTabProps> = ({
       if (sortMode === 'resemblance' && resemblanceOrder.length > 0) {
         const indexA = resemblanceOrder.indexOf(a.kanji);
         const indexB = resemblanceOrder.indexOf(b.kanji);
-        const rankA = indexA !== -1 ? indexA : 9999;
-        const rankB = indexB !== -1 ? indexB : 9999;
+        const rankA = indexA !== -1 ? indexA : 99999;
+        const rankB = indexB !== -1 ? indexB : 99999;
         if (rankA !== rankB) return rankA - rankB;
         return b.frequency - a.frequency;
       } else if (sortMode === 'frequency') {
+        if (kanjiScope === 'jisho') {
+          const fA = a.jishoFreq ?? 999999;
+          const fB = b.jishoFreq ?? 999999;
+          if (fA !== fB) return fA - fB;
+          return (a.strokeCount ?? 99) - (b.strokeCount ?? 99);
+        }
         return b.frequency - a.frequency;
       } else if (sortMode === 'recent') {
+        if (kanjiScope === 'jisho') {
+          return (a.strokeCount ?? 99) - (b.strokeCount ?? 99);
+        }
         return new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime();
       } else if (sortMode === 'jlpt_or_length') {
         const jlptA = a.jlpt ?? 99;
         const jlptB = b.jlpt ?? 99;
-        return jlptA - jlptB;
+        if (jlptA !== jlptB) return jlptA - jlptB;
+        return (a.jishoFreq ?? 999999) - (b.jishoFreq ?? 999999);
       }
       return 0;
     });
-  }, [catalog, searchQuery, sortMode, resemblanceOrder]);
+  }, [catalog, kanjiScope, searchQuery, sortMode, resemblanceOrder]);
 
   // 2. Filtered & Sorted Compounds
   const compoundEntries = useMemo(() => {
@@ -104,17 +127,15 @@ export const CatalogTab: React.FC<CatalogTabProps> = ({
   }, [compoundsCatalog, searchQuery, sortMode]);
 
   const handleClear = () => {
-    Alert.alert('Clear Catalog', 'Reset all recorded Kanji, compounds, and history?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Clear All',
-        style: 'destructive',
-        onPress: async () => {
-          await clearAllData();
-          onRefresh();
-        },
-      },
-    ]);
+    confirmAction(
+      'Clear Catalog',
+      'Reset all recorded Kanji, compounds, and history?',
+      'Clear All',
+      async () => {
+        await clearAllData();
+        onRefresh();
+      }
+    );
   };
 
   return (
@@ -148,13 +169,40 @@ export const CatalogTab: React.FC<CatalogTabProps> = ({
         </TouchableOpacity>
       </View>
 
+      {/* Scope Toggle for Individual Kanji: In Catalog vs All Jisho */}
+      {viewMode === 'individual' && (
+        <View style={styles.scopeToggleRow}>
+          <TouchableOpacity
+            style={[styles.scopeBtn, kanjiScope === 'catalog' && styles.scopeBtnActive]}
+            onPress={() => setKanjiScope('catalog')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.scopeBtnText, kanjiScope === 'catalog' && styles.scopeBtnTextActive]}>
+              In Catalog ({stats.uniqueKanjiCount})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.scopeBtn, kanjiScope === 'jisho' && styles.scopeBtnActiveJisho]}
+            onPress={() => setKanjiScope('jisho')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.scopeBtnText, kanjiScope === 'jisho' && styles.scopeBtnTextActive]}>
+              All Jisho (13,108)
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Search Input Row with Draw Search Button */}
       <View style={styles.searchRow}>
         <TextInput
           style={styles.searchInput}
           placeholder={
             viewMode === 'individual'
-              ? 'Filter by Kanji, meaning, or reading...'
+              ? kanjiScope === 'jisho'
+                ? 'Search all 13,108 Jisho Kanji...'
+                : 'Filter by Kanji, meaning, or reading...'
               : 'Filter compounds, readings, or meanings...'
           }
           placeholderTextColor="#666"
@@ -224,7 +272,7 @@ export const CatalogTab: React.FC<CatalogTabProps> = ({
           onPress={() => setSortMode('frequency')}
         >
           <Text style={[styles.sortBtnText, sortMode === 'frequency' && styles.sortBtnTextActive]}>
-            Frequency
+            {viewMode === 'individual' && kanjiScope === 'jisho' ? 'Common' : 'Frequency'}
           </Text>
         </TouchableOpacity>
 
@@ -233,7 +281,7 @@ export const CatalogTab: React.FC<CatalogTabProps> = ({
           onPress={() => setSortMode('recent')}
         >
           <Text style={[styles.sortBtnText, sortMode === 'recent' && styles.sortBtnTextActive]}>
-            Recent
+            {viewMode === 'individual' && kanjiScope === 'jisho' ? 'Strokes' : 'Recent'}
           </Text>
         </TouchableOpacity>
 
@@ -256,7 +304,7 @@ export const CatalogTab: React.FC<CatalogTabProps> = ({
             <Text style={styles.emptyText}>
               {searchQuery ? 'No matching Kanji.' : 'No Kanji catalogued yet.'}
             </Text>
-            {!searchQuery && (
+            {!searchQuery && kanjiScope === 'catalog' && (
               <TouchableOpacity style={styles.scanBtn} onPress={onGoToScan}>
                 <Text style={styles.scanBtnText}>Go to Scan</Text>
               </TouchableOpacity>
@@ -266,6 +314,9 @@ export const CatalogTab: React.FC<CatalogTabProps> = ({
           <FlatList
             data={kanjiEntries}
             keyExtractor={(item) => item.kanji}
+            initialNumToRender={20}
+            maxToRenderPerBatch={20}
+            windowSize={7}
             renderItem={({ item }) => {
               const rank = resemblanceOrder.indexOf(item.kanji);
               const resemblanceRank =
@@ -281,9 +332,11 @@ export const CatalogTab: React.FC<CatalogTabProps> = ({
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
             ListFooterComponent={
-              <TouchableOpacity style={styles.clearBtn} onPress={handleClear}>
-                <Text style={styles.clearBtnText}>Reset All Data</Text>
-              </TouchableOpacity>
+              kanjiScope === 'catalog' ? (
+                <TouchableOpacity style={styles.clearBtn} onPress={handleClear}>
+                  <Text style={styles.clearBtnText}>Reset All Data</Text>
+                </TouchableOpacity>
+              ) : undefined
             }
           />
         )
@@ -398,6 +451,37 @@ const styles = StyleSheet.create({
   modeBtnTextActive: {
     color: '#FFF',
     fontWeight: 'bold',
+  },
+  scopeToggleRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 8,
+  },
+  scopeBtn: {
+    flex: 1,
+    paddingVertical: 5,
+    alignItems: 'center',
+    borderRadius: 6,
+    backgroundColor: '#18181C',
+    borderWidth: 1,
+    borderColor: '#26262C',
+  },
+  scopeBtnActive: {
+    backgroundColor: '#28171C',
+    borderColor: '#E05666',
+  },
+  scopeBtnActiveJisho: {
+    backgroundColor: '#1A202E',
+    borderColor: '#88A0D0',
+  },
+  scopeBtnText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#8A8A9A',
+  },
+  scopeBtnTextActive: {
+    color: '#FFF',
+    fontWeight: '700',
   },
   searchRow: {
     flexDirection: 'row',

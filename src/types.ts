@@ -1,12 +1,13 @@
 export interface KanjiEntry {
   kanji: string;
-  frequency: number; // How many times detected across all scans
+  frequency: number; // How many times detected across all scans (0 if only from Jisho)
   meanings: string[];
   onyomi: string[];
   kunyomi: string[];
   jlpt: number | null;
   strokeCount: number | null;
   grade: number | null;
+  jishoFreq?: number | null; // Newspaper frequency rank from KANJIDIC (1 = most common)
   firstSeen: string; // ISO 8601 string
   lastSeen: string; // ISO 8601 string
 }
@@ -64,6 +65,7 @@ export interface ScanHistoryRecord {
   kanjiList: string[]; // all kanji in order
   uniqueKanji: string[];
   kanjiCounts: Record<string, number>;
+  kanjiDetails?: Record<string, KanjiEntry>; // Full dictionary snapshot for every kanji in the scan
   compounds: ScannedCompoundItem[];
   blurbs?: DialogueBlurb[];
   totalKanjiCount: number;

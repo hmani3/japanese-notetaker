@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Alert,
   Modal,
   StyleSheet,
   Text,
@@ -11,6 +10,7 @@ import {
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { getApiKey, setApiKey } from '../services/visionScanner';
+import { showAlert } from '../utils/alerts';
 
 interface ApiKeyModalProps {
   visible: boolean;
@@ -59,7 +59,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
 
   const handleSave = async () => {
     if (!keyInput.trim()) {
-      Alert.alert('Empty Key', 'Please enter or paste your Gemini API key.');
+      showAlert('Empty Key', 'Please enter or paste your Gemini API key.');
       return;
     }
     await setApiKey(keyInput.trim());
@@ -71,7 +71,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
       setCurrentKeyMasked('Configured');
     }
     setKeyInput('');
-    Alert.alert('Saved', 'Gemini API key saved to device storage.');
+    showAlert('Saved', 'Gemini API key saved to device storage.');
     if (onKeySaved) onKeySaved();
     onClose();
   };

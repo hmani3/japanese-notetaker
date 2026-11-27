@@ -3,6 +3,7 @@ import {
   Catalog,
   CompoundsCatalog,
   ExtractedScanData,
+  KanjiEntry,
   ScanHistoryRecord,
   ScanStats,
 } from '../types';
@@ -148,7 +149,14 @@ export async function recordScanData(
     }
   }
 
-  // 3. Create Scan History record
+  // 3. Create Scan History record with full Kanji dictionary snapshot
+  const kanjiDetails: Record<string, KanjiEntry> = {};
+  for (const char of scanData.individual.unique) {
+    if (currentCatalog[char]) {
+      kanjiDetails[char] = { ...currentCatalog[char] };
+    }
+  }
+
   const newRecord: ScanHistoryRecord = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     date: now,
@@ -156,6 +164,7 @@ export async function recordScanData(
     kanjiList: scanData.individual.all,
     uniqueKanji: scanData.individual.unique,
     kanjiCounts: scanData.individual.counts,
+    kanjiDetails,
     compounds: scanData.compounds,
     blurbs: scanData.blurbs || [],
     totalKanjiCount: scanData.individual.all.length,

@@ -30,6 +30,7 @@ export function lookupKanji(char: string): Omit<KanjiEntry, 'frequency' | 'first
       jlpt: details.jlpt ?? null,
       strokeCount: details.stroke_count ?? null,
       grade: details.grade ?? null,
+      jishoFreq: details.freq ?? null,
     };
   }
 
@@ -42,5 +43,40 @@ export function lookupKanji(char: string): Omit<KanjiEntry, 'frequency' | 'first
     jlpt: null,
     strokeCount: null,
     grade: null,
+    jishoFreq: null,
   };
+}
+
+let cachedAllJishoKanji: KanjiEntry[] | null = null;
+
+/**
+ * Returns all 13,108+ KANJIDIC Kanji entries (same dataset backing Jisho's #kanji index),
+ * cached in memory after first load for instant in-app browsing and search.
+ */
+export function getAllJishoKanji(): KanjiEntry[] {
+  if (cachedAllJishoKanji) {
+    return cachedAllJishoKanji;
+  }
+
+  try {
+    const rawList: RawKanjiDetails[] = Kanji.dump ? Kanji.dump() : [];
+    cachedAllJishoKanji = rawList.map((d) => ({
+      kanji: d.literal,
+      frequency: 0,
+      meanings: d.meanings || [],
+      onyomi: d.onyomi || [],
+      kunyomi: d.kunyomi || [],
+      jlpt: d.jlpt ?? null,
+      strokeCount: d.stroke_count ?? null,
+      grade: d.grade ?? null,
+      jishoFreq: d.freq ?? null,
+      firstSeen: '',
+      lastSeen: '',
+    }));
+  } catch (err) {
+    console.warn('Error loading full KANJIDIC dump:', err);
+    cachedAllJishoKanji = [];
+  }
+
+  return cachedAllJishoKanji;
 }

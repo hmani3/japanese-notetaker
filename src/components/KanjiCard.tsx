@@ -27,7 +27,17 @@ export const KanjiCard: React.FC<KanjiCardProps> = ({ entry, onPress, resemblanc
             {resemblanceRank !== undefined && (
               <Text style={styles.rankBadge}>#{resemblanceRank}</Text>
             )}
-            <Text style={styles.count}>{entry.frequency}×</Text>
+            {entry.frequency > 0 ? (
+              <Text style={styles.count}>{entry.frequency}×</Text>
+            ) : (
+              <Text style={styles.jishoTag}>
+                {entry.jlpt !== null
+                  ? `N${entry.jlpt}`
+                  : entry.strokeCount !== null
+                  ? `${entry.strokeCount}s`
+                  : 'Jisho'}
+              </Text>
+            )}
           </View>
         </View>
         <Text style={styles.readings} numberOfLines={1}>
@@ -77,6 +87,15 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: 'bold',
     color: '#E05666',
+  },
+  jishoTag: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#88A0D0',
+    backgroundColor: '#1E222E',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
   rightCol: {
     flexDirection: 'row',
