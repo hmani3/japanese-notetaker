@@ -190,6 +190,7 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
 
       {/* Full-featured Scan Details Modal (retains all Kanji meanings, readings, JLPT, Compounds & Translation) */}
       <ScanSummaryModal
+        key={selectedScan?.id || 'history-empty'}
         visible={selectedScan !== null}
         scanData={selectedScanData}
         onCancel={() => setSelectedScan(null)}

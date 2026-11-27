@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
@@ -118,7 +118,8 @@ export const DrawKanjiModal: React.FC<DrawKanjiModalProps> = ({
     return d;
   };
 
-  const inCatalogCandidates = candidates.filter((c) => catalogKanji.includes(c));
+  const catalogKanjiSet = useMemo(() => new Set(catalogKanji), [catalogKanji]);
+  const inCatalogCandidates = candidates.filter((c) => catalogKanjiSet.has(c));
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -256,7 +257,7 @@ export const DrawKanjiModal: React.FC<DrawKanjiModalProps> = ({
                 style={styles.candidatesScrollContainer}
               >
                 {candidates.map((char) => {
-                  const isInCatalog = catalogKanji.includes(char);
+                  const isInCatalog = catalogKanjiSet.has(char);
                   return (
                     <TouchableOpacity
                       key={char}

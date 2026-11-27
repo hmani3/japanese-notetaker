@@ -74,6 +74,9 @@ const SYSTEM_INSTRUCTION =
 const IMAGE_PROMPT =
   'Extract all dialogue/narration bubbles in exact R->L, top->bottom order into "blurbs" (japanese, translation, optional 1-sentence Japanese linguistic/literary/cultural notes or "", and [ymin, xmin, ymax, xmax] 0-1000 box), and all Kanji words/compounds into "compounds" (compound, hiragana reading, short meaning).';
 
+const FILLER_NOTE_REGEX =
+  /^(none\.?|n\/a\.?|null|no (special |notable |specific )?(linguistic|literary|cultural )?nuances?( or context)?( provided| needed| here)?\.?|nothing (notable|special)\.?|-|—)$/i;
+
 async function fetchWithTimeout(
   url: string,
   options: RequestInit,
@@ -126,8 +129,7 @@ function parseGeminiScanResponse(jsonText: string): ExtractedScanData {
     const japanese = String(item.japanese || item.text || item.original || '').trim();
     const translation = String(item.translation || item.english || '').trim();
     const rawNotes = String(item.notes || item.explanation || item.subtleties || '').trim();
-    const isFillerNote = /^(none|n\/a|no special nuance.*|no notable nuance.*|-|—)$/i.test(rawNotes);
-    const notes = isFillerNote ? '' : rawNotes;
+    const notes = FILLER_NOTE_REGEX.test(rawNotes) ? '' : rawNotes;
 
     let box: [number, number, number, number] | undefined;
     if (Array.isArray(item.box) && item.box.length === 4) {
@@ -177,7 +179,9 @@ function parseGeminiScanResponse(jsonText: string): ExtractedScanData {
       compoundsMap[word].countOnPage += 1;
     } else {
       const firstPos = orderedDialogueText ? orderedDialogueText.indexOf(word) : -1;
-      const textCount = orderedDialogueText ? countOccurrences(orderedDialogueText, word) : 0;
+      // Only count substring matches for multi-character compounds to avoid matching inside jukugo
+      const textCount =
+        word.length >= 2 && orderedDialogueText ? countOccurrences(orderedDialogueText, word) : 0;
       compoundsMap[word] = {
         compound: word,
         reading: reading || '—',
@@ -216,10 +220,8 @@ function buildGenerationConfig(model: string) {
     responseSchema: SCAN_RESPONSE_SCHEMA,
   };
 
-  // Gemini 3.5 Flash-Lite and 3.6 Flash support minimal thinking (target <10s)
-  // Gemini 2.5 Flash-Lite uses thinkingBudget: 0 for zero-thinking speed
   if (model.startsWith('gemini-3.5-flash-lite') || model.startsWith('gemini-3.6-flash')) {
-    config.thinkingConfig = { thinkingLevel: 'minimal' };
+    config.thinkingConfig = { thinkingLevel: 'MINIMAL' };
   } else if (model.startsWith('gemini-2.5-flash-lite')) {
     config.thinkingConfig = { thinkingBudget: 0 };
   }
@@ -227,13 +229,11 @@ function buildGenerationConfig(model: string) {
   return config;
 }
 
-export async function scanMangaImage(
-  base64Image: string,
-  mimeType: string = 'image/jpeg'
+async function callGeminiWithFallback(
+  models: string[],
+  userParts: any[]
 ): Promise<ExtractedScanData> {
   const apiKey = await getApiKey();
-  // Free-tier optimized fast models in order of speed + OCR accuracy
-  const models = ['gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-2.5-flash-lite'];
   let lastError: any = null;
 
   for (const model of models) {
@@ -245,17 +245,7 @@ export async function scanMangaImage(
         contents: [
           {
             role: 'user',
-            parts: [
-              {
-                inlineData: {
-                  mimeType,
-                  data: base64Image,
-                },
-              },
-              {
-                text: IMAGE_PROMPT,
-              },
-            ],
+            parts: userParts,
           },
         ],
         generationConfig: buildGenerationConfig(model),
@@ -270,14 +260,29 @@ export async function scanMangaImage(
 
       if (response.ok) {
         const json = await response.json();
-        const text = json?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+        const candidate = json?.candidates?.[0];
+        const finishReason = candidate?.finishReason;
+
+        if (
+          finishReason === 'SAFETY' ||
+          finishReason === 'PROHIBITED_CONTENT' ||
+          finishReason === 'BLOCKLIST'
+        ) {
+          throw new Error('This page triggered the AI safety filter and could not be read.');
+        }
+
+        const text = candidate?.content?.parts?.[0]?.text || '{}';
         return parseGeminiScanResponse(text);
       } else {
         const errJson = await response.json().catch(() => null);
         const msg = errJson?.error?.message || `Status ${response.status}`;
         lastError = new Error(msg);
 
-        if (response.status === 401 || response.status === 403) {
+        if (
+          response.status === 401 ||
+          response.status === 403 ||
+          (response.status === 400 && /api.?key/i.test(msg))
+        ) {
           throw new Error('Invalid or unauthorized Gemini API key. Check your key in "Key".');
         }
         if (response.status === 429) {
@@ -289,55 +294,59 @@ export async function scanMangaImage(
         lastError = new Error('Scan timed out (>14s). Try a closer crop or better lighting.');
       } else {
         lastError = err;
-        if (err?.message?.includes('API key')) {
+        if (
+          err?.message?.includes('API key') ||
+          err?.message?.includes('safety filter')
+        ) {
           throw err;
         }
       }
     }
   }
 
-  throw lastError || new Error('Could not analyze manga image.');
+  throw lastError || new Error('Could not analyze manga content.');
+}
+
+export async function scanMangaImage(
+  base64Image: string,
+  mimeType: string = 'image/jpeg'
+): Promise<ExtractedScanData> {
+  return callGeminiWithFallback(
+    ['gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-2.5-flash-lite'],
+    [
+      {
+        inlineData: {
+          mimeType,
+          data: base64Image,
+        },
+      },
+      {
+        text: IMAGE_PROMPT,
+      },
+    ]
+  );
 }
 
 /**
  * Extracts individual Kanji and compounds from directly pasted or typed Japanese text.
  */
 export async function scanMangaText(text: string): Promise<ExtractedScanData> {
-  const apiKey = await getApiKey();
-
   const prompt =
     `Analyze this Japanese manga text in exact reading order:\n"""\n${text}\n"""\n` +
-    'Split into "blurbs" (japanese, translation, 1-sentence notes, [0,0,0,0] box) and extract Kanji words into "compounds" (compound, hiragana reading, short meaning).';
+    'Split into "blurbs" (japanese, translation, optional 1-sentence Japanese linguistic/literary/cultural notes or "", [0,0,0,0] box) and extract Kanji words into "compounds" (compound, hiragana reading, short meaning).';
 
-  const models = ['gemini-3.5-flash-lite', 'gemini-2.5-flash-lite'];
-  for (const model of models) {
-    try {
-      const body = {
-        systemInstruction: {
-          parts: [{ text: SYSTEM_INSTRUCTION }],
-        },
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: buildGenerationConfig(model),
-      };
-
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      const response = await fetchWithTimeout(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      if (response.ok) {
-        const json = await response.json();
-        const resText = json?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-        return parseGeminiScanResponse(resText);
-      }
-    } catch {
-      // Fallback below
+  try {
+    return await callGeminiWithFallback(
+      ['gemini-3.5-flash-lite', 'gemini-2.5-flash-lite'],
+      [{ text: prompt }]
+    );
+  } catch (err: any) {
+    if (err?.message?.includes('API key') || err?.message?.includes('safety filter')) {
+      throw err;
     }
   }
 
-  // Offline fallback
+  // Offline / transient network fallback
   const individual = extractKanji(text);
   const compoundMatches = text.match(/[\u4E00-\u9FAF\u3400-\u4DBF]{2,}/g) || [];
   const compoundsMap: Record<string, ScannedCompoundItem> = {};
@@ -361,8 +370,8 @@ export async function scanMangaText(text: string): Promise<ExtractedScanData> {
         {
           orderIndex: 0,
           japanese: text.trim(),
-          translation: 'Offline raw text (Connect to internet for AI nuance translation)',
-          notes: 'Directly pasted snippet',
+          translation: 'Offline raw text (Connect to internet for AI translation)',
+          notes: '',
         },
       ]
     : [];

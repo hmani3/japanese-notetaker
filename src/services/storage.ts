@@ -246,5 +246,6 @@ export async function clearAllData(): Promise<void> {
     COMPOUNDS_STORAGE_KEY,
     HISTORY_STORAGE_KEY,
     STATS_STORAGE_KEY,
+    PENDING_SCAN_STORAGE_KEY,
   ]);
 }

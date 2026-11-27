@@ -390,7 +390,7 @@ export const ScanSummaryModal: React.FC<ScanSummaryModalProps> = ({
                     <Text style={styles.compoundReading}>{item.reading}</Text>
                   </View>
                   <View style={styles.compoundCenter}>
-                    <Text style={styles.meaningText} numberOfLines={2}>
+                    <Text style={styles.meaningText}>
                       {item.meaning}
                     </Text>
                   </View>
@@ -431,76 +431,19 @@ export const ScanSummaryModal: React.FC<ScanSummaryModalProps> = ({
               )}
             />
           ) : (
-            <ScrollView
-              style={styles.scrollList}
-              contentContainerStyle={styles.listContent}
-              showsVerticalScrollIndicator={true}
-            >
-              {scanData.imageUri ? (
-                <View
-                  style={[
-                    styles.pageCanvas,
-                    { aspectRatio: scanData.imageAspectRatio || 0.7 },
-                  ]}
-                >
-                  <Image
-                    source={{ uri: scanData.imageUri }}
-                    style={styles.pageImage}
-                    resizeMode="contain"
-                  />
-
-                  {showOverlay ? <View style={styles.pageDimScrim} pointerEvents="none" /> : null}
-
-                  {showOverlay &&
-                    (scanData.blurbs || []).map((blurb, idx) => {
-                      if (!blurb.box) return null;
-                      const [ymin, xmin, ymax, xmax] = blurb.box;
-                      const topPct = Math.max(0, Math.min(90, ymin / 10));
-                      const leftPct = Math.max(0, Math.min(82, xmin / 10));
-                      const widthPct = Math.max(16, Math.min(98 - leftPct, (xmax - xmin) / 10));
-                      const minHeightPct = Math.max(7, Math.min(98 - topPct, (ymax - ymin) / 10));
-                      const isSelected = selectedBlurbIdx === idx;
-
-                      return (
-                        <TouchableOpacity
-                          key={`overlay-${blurb.orderIndex ?? idx}`}
-                          style={[
-                            styles.overlayBubble,
-                            {
-                              top: `${topPct}%`,
-                              left: `${leftPct}%`,
-                              width: `${widthPct}%`,
-                              minHeight: `${minHeightPct}%`,
-                            },
-                            isSelected && styles.overlayBubbleSelected,
-                          ]}
-                          onPress={() =>
-                            setSelectedBlurbIdx((prev) => (prev === idx ? null : idx))
-                          }
-                          activeOpacity={0.85}
-                        >
-                          <Text style={styles.overlayBubbleNum}>#{idx + 1}</Text>
-                          <Text style={styles.overlayBubbleText} numberOfLines={4}>
-                            {blurb.translation}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                </View>
-              ) : (
-                <View style={styles.emptyBlurbs}>
-                  <Text style={styles.emptyBlurbsText}>
-                    Original image not available for this scan.
-                  </Text>
-                </View>
-              )}
-
+            <View style={styles.scrollList}>
               {selectedBlurbIdx !== null && scanData.blurbs?.[selectedBlurbIdx] ? (
-                <View style={[styles.blurbCard, { marginTop: 10 }]}>
+                <View style={[styles.blurbCard, { marginBottom: 8 }]}>
                   <View style={styles.blurbHeader}>
                     <Text style={styles.blurbIndexBadge}>
                       Selected Bubble #{selectedBlurbIdx + 1}
                     </Text>
+                    <TouchableOpacity
+                      onPress={() => setSelectedBlurbIdx(null)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.dismissBubbleText}>Dismiss</Text>
+                    </TouchableOpacity>
                   </View>
                   <Text style={styles.blurbJapanese}>
                     {scanData.blurbs[selectedBlurbIdx].japanese}
@@ -518,7 +461,73 @@ export const ScanSummaryModal: React.FC<ScanSummaryModalProps> = ({
                   ) : null}
                 </View>
               ) : null}
-            </ScrollView>
+
+              <ScrollView
+                style={styles.scrollList}
+                contentContainerStyle={styles.listContent}
+                showsVerticalScrollIndicator={true}
+              >
+                {scanData.imageUri ? (
+                  <View
+                    style={[
+                      styles.pageCanvas,
+                      { aspectRatio: scanData.imageAspectRatio || 0.7 },
+                    ]}
+                  >
+                    <Image
+                      source={{ uri: scanData.imageUri }}
+                      style={styles.pageImage}
+                      resizeMode="contain"
+                    />
+
+                    {showOverlay ? <View style={styles.pageDimScrim} pointerEvents="none" /> : null}
+
+                    {showOverlay &&
+                      (scanData.blurbs || []).map((blurb, idx) => {
+                        if (!blurb.box) return null;
+                        const [ymin, xmin, ymax, xmax] = blurb.box;
+                        const leftPct = Math.max(1, Math.min(74, xmin / 10));
+                        const topPct = Math.max(1, Math.min(88, ymin / 10));
+                        const widthPct = Math.max(24, Math.min(98 - leftPct, (xmax - xmin) / 10));
+                        const minHeightPct = Math.max(8, Math.min(98 - topPct, (ymax - ymin) / 10));
+                        const isSelected = selectedBlurbIdx === idx;
+
+                        return (
+                          <TouchableOpacity
+                            key={`overlay-${blurb.orderIndex ?? idx}`}
+                            style={[
+                              styles.overlayBubble,
+                              {
+                                top: `${topPct}%`,
+                                left: `${leftPct}%`,
+                                width: `${widthPct}%`,
+                                minHeight: `${minHeightPct}%`,
+                                zIndex: isSelected ? 20 : 1,
+                              },
+                              isSelected && styles.overlayBubbleSelected,
+                            ]}
+                            onPress={() =>
+                              setSelectedBlurbIdx((prev) => (prev === idx ? null : idx))
+                            }
+                            activeOpacity={0.85}
+                          >
+                            <Text style={styles.overlayBubbleNum}>#{idx + 1}</Text>
+                            <Text style={styles.overlayBubbleText} numberOfLines={5}>
+                              {blurb.translation}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                  </View>
+                ) : (
+                  <View style={styles.emptyBlurbs}>
+                    <Text style={styles.emptyBlurbsText}>
+                      Original image not available for this scan.
+                    </Text>
+                  </View>
+                )}
+              </ScrollView>
+            </View>
           )}
 
           {/* Action Footer */}
@@ -616,6 +625,7 @@ const styles = StyleSheet.create({
   viewModeToggleContent: {
     flexDirection: 'row',
     flexGrow: 1,
+    minWidth: '100%',
     gap: 3,
   },
   modeBtn: {
@@ -915,5 +925,10 @@ const styles = StyleSheet.create({
     lineHeight: 13,
     color: '#FFF',
     fontWeight: '500',
+  },
+  dismissBubbleText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#E05666',
   },
 });

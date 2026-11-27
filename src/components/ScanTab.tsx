@@ -24,9 +24,10 @@ const MAX_WEB_IMAGE_DIM = 1280;
  * so uploads are ~200KB instead of 5-15MB while keeping manga Kanji sharp.
  */
 async function compressBase64OnWeb(
-  base64: string,
+  rawBase64: string,
   mimeType: string = 'image/jpeg'
 ): Promise<{ base64: string; aspectRatio?: number }> {
+  const base64 = rawBase64.replace(/^data:[^;]+;base64,/, '');
   if (Platform.OS !== 'web' || typeof document === 'undefined' || typeof Image === 'undefined') {
     return { base64 };
   }
@@ -72,7 +73,6 @@ interface ScanTabProps {
   setScanData: (data: ExtractedScanData | null) => void;
   showSummary: boolean;
   setShowSummary: (val: boolean) => void;
-  isCurrentTab: boolean;
 }
 
 export const ScanTab: React.FC<ScanTabProps> = ({
@@ -83,7 +83,6 @@ export const ScanTab: React.FC<ScanTabProps> = ({
   setScanData,
   showSummary,
   setShowSummary,
-  isCurrentTab,
 }) => {
   const [directText, setDirectText] = useState('');
 
@@ -132,7 +131,8 @@ export const ScanTab: React.FC<ScanTabProps> = ({
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ['images'],
       allowsEditing: false,
-      quality: 0.75,
+      quality: 0.7,
+      exif: false,
       base64: true,
     });
 
@@ -152,7 +152,8 @@ export const ScanTab: React.FC<ScanTabProps> = ({
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: false,
-      quality: 0.75,
+      quality: 0.7,
+      exif: false,
       base64: true,
     });
 
@@ -278,24 +279,40 @@ export const ScanTab: React.FC<ScanTabProps> = ({
           <Text style={styles.sectionHeader}>Direct Text Input</Text>
           <Text style={styles.sectionHint}>Clipboard / Live Text</Text>
         </View>
-        <TouchableOpacity style={styles.btnOutline} onPress={handlePasteClipboard} activeOpacity={0.8}>
+        <TouchableOpacity
+          style={[styles.btnOutline, isScanning && styles.btnDisabled]}
+          onPress={handlePasteClipboard}
+          disabled={isScanning}
+          activeOpacity={0.8}
+        >
           <Text style={styles.btnOutlineText}>Paste from Clipboard</Text>
         </TouchableOpacity>
 
         <TextInput
           style={styles.textInput}
           multiline
+          editable={!isScanning}
           placeholder="Or type/paste Japanese text directly..."
           placeholderTextColor="#666"
           value={directText}
           onChangeText={setDirectText}
         />
-        <TouchableOpacity style={styles.btnPrimary} onPress={handleDirectSubmit} activeOpacity={0.8}>
+        <TouchableOpacity
+          style={[styles.btnPrimary, isScanning && styles.btnDisabled]}
+          onPress={handleDirectSubmit}
+          disabled={isScanning}
+          activeOpacity={0.8}
+        >
           <Text style={styles.btnPrimaryText}>Catalog from Text</Text>
         </TouchableOpacity>
       </View>
 
       <ScanSummaryModal
+        key={
+          scanData
+            ? `live-${scanData.individual.all.slice(0, 6).join('')}-${scanData.blurbs?.length || 0}`
+            : 'live-empty'
+        }
         visible={showSummary}
         scanData={scanData}
         onSave={handleSaveToCatalog}
@@ -383,6 +400,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 6,
     alignItems: 'center',
+  },
+  btnDisabled: {
+    opacity: 0.45,
   },
   btnPrimaryText: {
     color: '#FFF',

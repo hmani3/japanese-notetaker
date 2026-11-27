@@ -61,16 +61,22 @@ function MainApp() {
   };
 
   const refreshData = async () => {
-    const [loadedCatalog, loadedCompounds, loadedHistory, loadedStats] = await Promise.all([
-      loadCatalog(),
-      loadCompoundsCatalog(),
-      loadHistory(),
-      loadStats(),
-    ]);
+    const [loadedCatalog, loadedCompounds, loadedHistory, loadedStats, pendingScan] =
+      await Promise.all([
+        loadCatalog(),
+        loadCompoundsCatalog(),
+        loadHistory(),
+        loadStats(),
+        loadPendingScan(),
+      ]);
     setCatalog(loadedCatalog);
     setCompoundsCatalog(loadedCompounds);
     setHistory(loadedHistory);
     setStats(loadedStats);
+    if (!pendingScan && scanData) {
+      setScanDataState(null);
+      setShowSummary(false);
+    }
   };
 
   useEffect(() => {
@@ -176,7 +182,6 @@ function MainApp() {
             setScanData={setScanData}
             showSummary={showSummary}
             setShowSummary={setShowSummary}
-            isCurrentTab={activeTab === 'scan'}
           />
         </View>
 

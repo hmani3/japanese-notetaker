@@ -137,6 +137,9 @@ export const CatalogTab: React.FC<CatalogTabProps> = ({
       'Clear All',
       async () => {
         await clearAllData();
+        setResemblanceOrder([]);
+        setSearchQuery('');
+        setSortMode('frequency');
         onRefresh();
       }
     );
@@ -322,9 +325,9 @@ export const CatalogTab: React.FC<CatalogTabProps> = ({
             maxToRenderPerBatch={20}
             windowSize={7}
             renderItem={({ item }) => {
-              const rank = resemblanceOrder.indexOf(item.kanji);
+              const rank = resemblanceRankMap.get(item.kanji);
               const resemblanceRank =
-                sortMode === 'resemblance' && rank !== -1 ? rank + 1 : undefined;
+                sortMode === 'resemblance' && rank !== undefined ? rank + 1 : undefined;
               return (
                 <KanjiCard
                   entry={item}
